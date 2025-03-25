@@ -1,3 +1,5 @@
+import os
+import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.db.database import engine, Base
@@ -10,6 +12,10 @@ app = FastAPI(
     description="API pour le projet Juridica",
     version="0.1.0"
 )
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 10000))  # 8000 par défaut en local
+    uvicorn.run("app.main:app", host="0.0.0.0", port=port, reload=True)
+
 
 
 # Configuration CORS
