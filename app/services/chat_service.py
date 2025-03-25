@@ -66,9 +66,9 @@ class ChatService:
             logger.error(f"Erreur lors de l'initialisation du client Mistral: {str(e)}")
             raise
 
-    async def process_query(self, request: ChatRequest) -> ChatResponse:
+    async def process_query(self, request: ChatRequest,conversation_id: str = None) -> ChatResponse:
         self._cleanup_expired_conversations()
-        conversation_id = request.conversation_id or str(uuid.uuid4())
+        conversation_id = conversation_id or str(uuid.uuid4())
         conversation_history = self.conversations.get(conversation_id) if conversation_id in self.conversations else []
         self.timestamps[conversation_id] = time.time()
 

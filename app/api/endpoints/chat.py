@@ -10,6 +10,7 @@ chat_service = ChatService()
 async def process_query(request: ChatRequest):
     """
     Traite une requête utilisateur et génère une réponse juridique.
+    Un nouveau conversation_id est généré automatiquement.
     """
     try:
         response = await chat_service.process_query(request)
@@ -36,3 +37,14 @@ async def clear_conversation(conversation_id: str):
     if not success:
         raise HTTPException(status_code=404, detail="Conversation non trouvée")
     return {"message": "Conversation effacée avec succès"}
+@router.post("/continue/{conversation_id}", response_model=ChatResponse)
+async def continue_conversation(conversation_id: str, request: ChatRequest):
+    """
+    Continue une conversation existante identifiée par son ID.
+    """
+    try:
+        # Passez le conversation_id comme paramètre séparé
+        response = await chat_service.process_query(request, conversation_id=conversation_id)
+        return response
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
