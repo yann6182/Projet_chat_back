@@ -3,7 +3,7 @@ import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.db.database import engine, Base
-from app.api.endpoints import users, chat, documents, knowledge_base
+from app.api.endpoints import users, chat, documents, knowledge_base, auth
 
 Base.metadata.create_all(bind=engine)
 # Création de l'application FastAPI
@@ -30,9 +30,9 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["Content-Type", "X-CSRFToken"],
 )
 
-# Route de base
 @app.get("/")
 async def root():
     return {"message": "Bienvenue sur mon API FastAPI"}
@@ -41,3 +41,4 @@ app.include_router(users.router)
 app.include_router(chat.router)
 app.include_router(documents.router)
 app.include_router(knowledge_base.router)
+app.include_router(auth.router)

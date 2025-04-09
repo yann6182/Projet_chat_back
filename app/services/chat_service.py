@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from app.schemas.chat import ChatRequest, ChatResponse
 from app.services.retrieval_service import RetrievalService
 from app.services.embedding_service import EmbeddingService
-from app.models.model import Conversation, Question, Response
+from app.models.model import Conversation, Question, Response, User
 from app.db.database import SessionLocal
 from mistralai import Mistral
 import os
@@ -43,10 +43,11 @@ class LRUCache:
         return False
 
 class ChatService:
+    # Dans la méthode __init__ de la classe ChatService
     def __init__(self, 
-                 model_name: str = "mistral-large-latest", 
-                 max_conversations: int = 1000,
-                 conversation_ttl: int = 3600):
+             model_name: str = "mistral-large-latest", 
+             max_conversations: int = 1000,
+             conversation_ttl: int = 3600):
         self.retrieval_service = RetrievalService()
         self.embedding_service = EmbeddingService()
         self.conversations = LRUCache(max_conversations)
@@ -56,7 +57,25 @@ class ChatService:
         self.max_output_tokens = 200
 
         try:
+            # Utiliser directement le chemin absolu vers le fichier .env
+            from dotenv import load_dotenv
+            import os
+            
+            # Chargement explicite du fichier .env
+            env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'app', '.env')
+            load_dotenv(env_path)
+            
+            # Récupérer la clé API après chargement
             mistral_api_key = os.getenv("MISTRAL_API_KEY")
+            
+            if not mistral_api_key:
+                logger.error(f"Clé API Mistral non trouvée dans {env_path}")
+                raise ValueError("Clé API Mistral non trouvée")
+                
+            # Afficher la clé partiellement pour debug (premiers et derniers caractères)
+            key_preview = mistral_api_key[:4] + "..." + mistral_api_key[-4:]
+            logger.info(f"Clé API Mistral trouvée: {key_preview}")
+            
             self.client = Mistral(api_key=mistral_api_key)
             self.model = model_name
             if os.path.exists(self.embedding_service.index_path):
@@ -66,7 +85,8 @@ class ChatService:
             logger.error(f"Erreur lors de l'initialisation du client Mistral: {str(e)}")
             raise
 
-    async def process_query(self, request: ChatRequest,conversation_id: str = None) -> ChatResponse:
+    async def process_query(self, request: ChatRequest,conversation_id: str = None,user_id: int = None) -> ChatResponse:
+        category = "other"  # Valeur par défaut
         self._cleanup_expired_conversations()
         conversation_id = conversation_id or str(uuid.uuid4())
         conversation_history = self.conversations.get(conversation_id) if conversation_id in self.conversations else []
@@ -91,22 +111,49 @@ class ChatService:
                 conversation_history = conversation_history[-self.max_history_messages * 2:]
 
             self.conversations.put(conversation_id, conversation_history)
-
+            if not category:
+                category = self._determine_category(request.query)
             # 💾 Enregistrer en base de données
             db: Session = SessionLocal()
             try:
-                # Créer ou récupérer la conversation
+            # Créer ou récupérer la conversation
                 db_conversation = db.query(Conversation).filter_by(uuid=conversation_id).first()
+                
+                # Si la conversation n'existe pas et qu'un user_id est fourni, créer la conversation
                 if not db_conversation:
-                    db_conversation = Conversation(uuid=conversation_id)
-                    db.add(db_conversation)
-                    db.commit()
-                    db.refresh(db_conversation)
+                    if user_id:
+                        # Créer la conversation avec l'ID utilisateur fourni
+                        db_conversation = Conversation(
+                            uuid=conversation_id, 
+                            user_id=user_id,
+                            category=category
+                        )
+                        db.add(db_conversation)
+                        db.commit()
+                        db.refresh(db_conversation)
+                    else:
+                        # Si aucun user_id n'est fourni, on crée une conversation anonyme
+                        # Qui pourra être associée à un utilisateur plus tard
+                        db_conversation = Conversation(
+                            uuid=conversation_id,
+                            category=category
+                        )
+                        db.add(db_conversation)
+                        db.commit()
+                        db.refresh(db_conversation)
 
+                # Ajouter question et réponse
                 db_question = Question(question_text=request.query, conversation_id=db_conversation.id)
-                db_response = Response(response_text=answer, conversation_id=db_conversation.id)
-
                 db.add(db_question)
+                db.commit()
+                db.refresh(db_question)
+                
+                # Lier la réponse à la question
+                db_response = Response(
+                    response_text=answer, 
+                    conversation_id=db_conversation.id,
+                    question_id=db_question.id
+                )
                 db.add(db_response)
                 db.commit()
 
@@ -126,7 +173,26 @@ class ChatService:
                 sources=[],
                 conversation_id=conversation_id
             )
-
+    def _determine_category(self, query: str) -> str:
+        """
+        Détermine la catégorie de la question basée sur des mots-clés.
+        """
+        query = query.lower()
+        
+        # Définition des catégories et mots-clés associés
+        category_keywords = {
+            'treasury': ['trésorerie', 'finance', 'budget', 'financial', 'comptable', 'accounting', 'tva'],
+            'organisational': ['structure', 'organisation', 'management', 'réunion', 'équipe', 'team', 'gestion'],
+            'other': ['juridique', 'legal', 'général', 'question', 'help', 'aide']
+        }
+        
+        # Vérifier les mots-clés dans la requête
+        for category, keywords in category_keywords.items():
+            for keyword in keywords:
+                if keyword in query:
+                    return category
+                    
+        return "other"  # Catégorie par défaut
     async def _generate_response(self, query: str, conversation_history: List[Dict], context: str = "") -> str:
         try:
             history_messages = [

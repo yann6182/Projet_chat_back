@@ -13,10 +13,10 @@ class Settings(BaseSettings):
     #DATABASE_URL: str = os.getenv("DATABASE_URL", "sqlite:///./sql_app.db")
     
     # Variables pour JWT
-    SECRET_KEY: str = os.getenv("SECRET_KEY", "votre_clé_secrète_par_défaut")
+    SECRET_KEY: str = "2Z2UKaxPogMx0Ct0EOzCIK5YdDTh0qmsnkxhxsptnIA"  # À changer et à mettre en variable d'environnement
     ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
-    
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7  # 7 jours
+    COOKIE_SECURE: bool = True  # Mettre True en production avec HTTPS
     class Config:
         env_file = ".env"
 

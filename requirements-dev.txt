@@ -1,0 +1,13 @@
+-r requirements.txt
+
+langchain
+langchain-community
+mistralai
+faiss-cpu
+sentence-transformers
+PyMuPDF
+docx2txt
+PyPDF2
+python-pptx
+spacy
+numpy
