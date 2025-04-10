@@ -21,7 +21,6 @@ async def create_new_conversation(
     """
     Crée une nouvelle conversation vide pour l'utilisateur.
     Retourne l'ID de la nouvelle conversation.
-    L'utilisateur doit être connecté pour utiliser cette fonctionnalité.
     """
     try:
         # Générer un nouvel ID de conversation unique
@@ -30,7 +29,6 @@ async def create_new_conversation(
         # Enregistrer la conversation vide en base de données
         db = SessionLocal()
         try:
-            # Créer une nouvelle conversation associée à l'utilisateur actuel
             db_conversation = Conversation(
                 uuid=conversation_id,
                 user_id=current_user.id,
@@ -39,22 +37,22 @@ async def create_new_conversation(
             db.add(db_conversation)
             db.commit()
             db.refresh(db_conversation)
-            
         finally:
             db.close()
         
-        # Retourner les infos de la nouvelle conversation avec le champ answer requis
-        return {
-            "conversation_id": conversation_id,
-            "message": "Nouvelle conversation créée avec succès",
-            "answer": "Bonjour, comment puis-je vous aider aujourd'hui?",  # Champ requis
-            "greeting": "Bonjour, comment puis-je vous aider aujourd'hui?"
-        }
+        # Retourner l'ID de la conversation pour l'utiliser dans les requêtes suivantes
+        return ChatResponse(
+            conversation_id=conversation_id,
+            answer="Nouvelle conversation créée avec succès. Comment puis-je vous aider ?",
+            sources=[]
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 @router.post("/query", response_model=ChatResponse)
 async def process_query(
     request: ChatRequest,
+    conversation_id: Optional[str] = None,  # Ajout de l'ID de la conversation
+
     current_user: User = Depends(get_current_user)  # Authentification obligatoire
 ):
     """
@@ -64,7 +62,7 @@ async def process_query(
     """
     try:
         # L'utilisateur est toujours connecté ici
-        response = await chat_service.process_query(request, user_id=current_user.id)
+        response = await chat_service.process_query(request, user_id=current_user.id,conversation_id=conversation_id)
         return response
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -112,14 +110,24 @@ async def get_conversation_history(
     Récupère l'historique d'une conversation.
     Vérifie que l'utilisateur a accès à cette conversation.
     """
+    print(f"Tentative d'accès à l'historique de la conversation: {conversation_id}")
+    print(f"Utilisateur: {current_user.id if current_user else 'Non authentifié'}")
+    
     # Vérifier si la conversation appartient à l'utilisateur actuel
     if current_user:
         conversation = db.query(Conversation).filter(
             Conversation.uuid == conversation_id
         ).first()
         
+        if not conversation:
+            print(f"Conversation {conversation_id} introuvable")
+            raise HTTPException(status_code=404, detail="Conversation non trouvée")
+            
+        print(f"Conversation trouvée: {conversation.id}, user_id: {conversation.user_id}")
+        
         if conversation and conversation.user_id is not None:
             if conversation.user_id != current_user.id:
+                print(f"Accès refusé: conversation appartient à l'utilisateur {conversation.user_id}")
                 raise HTTPException(
                     status_code=403, 
                     detail="Vous n'avez pas accès à cette conversation"
@@ -127,8 +135,10 @@ async def get_conversation_history(
     
     # Récupérer l'historique
     history = chat_service.get_conversation_history(conversation_id)
+    print(f"Historique récupéré: {len(history) if history else 0} messages")
+    
     if not history:
-        raise HTTPException(status_code=404, detail="Conversation non trouvée")
+        raise HTTPException(status_code=404, detail="Historique de conversation non trouvé")
     
     return {"conversation_id": conversation_id, "history": history}
 

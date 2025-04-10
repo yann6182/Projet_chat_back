@@ -11,6 +11,7 @@ from app.models.model import Conversation, Question, Response, User
 from app.db.database import SessionLocal
 from mistralai import Mistral
 import os
+from fastapi import HTTPException
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -85,10 +86,12 @@ class ChatService:
             logger.error(f"Erreur lors de l'initialisation du client Mistral: {str(e)}")
             raise
 
-    async def process_query(self, request: ChatRequest,conversation_id: str = None,user_id: int = None) -> ChatResponse:
+    async def process_query(self, request: ChatRequest, conversation_id: str, user_id: int) -> ChatResponse:
+        """
+        Traite une requête utilisateur et génère une réponse.
+        """
         category = "other"  # Valeur par défaut
         self._cleanup_expired_conversations()
-        conversation_id = conversation_id or str(uuid.uuid4())
         conversation_history = self.conversations.get(conversation_id) if conversation_id in self.conversations else []
         self.timestamps[conversation_id] = time.time()
 
@@ -111,61 +114,37 @@ class ChatService:
                 conversation_history = conversation_history[-self.max_history_messages * 2:]
 
             self.conversations.put(conversation_id, conversation_history)
-            if not category:
-                category = self._determine_category(request.query)
+
             # 💾 Enregistrer en base de données
             db: Session = SessionLocal()
             try:
-            # Créer ou récupérer la conversation
+                # Récupérer la conversation existante
                 db_conversation = db.query(Conversation).filter_by(uuid=conversation_id).first()
-                
-                # Si la conversation n'existe pas et qu'un user_id est fourni, créer la conversation
                 if not db_conversation:
-                    if not db_conversation:
-                         logger.info(f"🟢 Création d'une nouvelle conversation UUID={conversation_id} pour user_id={user_id}")
+                    logger.error(f"Conversation non trouvée pour conversation_id={conversation_id}")
 
-                    if user_id:
-                        # Créer la conversation avec l'ID utilisateur fourni
-                        db_conversation = Conversation(
-                            uuid=conversation_id, 
-                            user_id=user_id,
-                            category=category
-                        )
-                        db.add(db_conversation)
-                        db.commit()
-                        db.refresh(db_conversation)
-                    else:
-                        # Si aucun user_id n'est fourni, on crée une conversation anonyme
-                        # Qui pourra être associée à un utilisateur plus tard
-                        db_conversation = Conversation(
-                            uuid=conversation_id,
-                            category=category
-                        )
-                        db.add(db_conversation)
-                        db.commit()
-                        db.refresh(db_conversation)
+                    raise HTTPException(status_code=404, detail="Conversation non trouvée.")
 
-                # Ajouter question et réponse
+                # Ajouter la question
                 db_question = Question(question_text=request.query, conversation_id=db_conversation.id)
                 db.add(db_question)
                 db.commit()
                 db.refresh(db_question)
-                
-                # Lier la réponse à la question
+
+                # Ajouter la réponse
                 db_response = Response(
-                    response_text=answer, 
+                    response_text=answer,
                     conversation_id=db_conversation.id,
                     question_id=db_question.id
                 )
                 db.add(db_response)
                 db.commit()
-
             finally:
                 db.close()
 
             return ChatResponse(
-                answer=answer, 
-                sources=sources, 
+                answer=answer,
+                sources=sources,
                 conversation_id=conversation_id
             )
 
@@ -227,11 +206,64 @@ class ChatService:
             if conv_id in self.timestamps:
                 del self.timestamps[conv_id]
 
-    def get_conversation_history(self, conversation_id: str) -> Optional[List[Dict]]:
-        if conversation_id in self.conversations:
-            self.timestamps[conversation_id] = time.time()
-            return self.conversations.get(conversation_id)
-        return None
+    def get_conversation_history(self, conversation_id: str) -> List[dict]:
+        """
+        Récupère l'historique complet d'une conversation à partir de son ID.
+        """
+        if not conversation_id:
+            return []
+        
+        # Log pour le débogage
+        print(f"Récupération de l'historique pour conversation_id: {conversation_id}")
+        
+        db = SessionLocal()
+        try:
+            # Vérifier si la conversation existe
+            conversation = db.query(Conversation).filter(Conversation.uuid == conversation_id).first()
+            if not conversation:
+                print(f"Conversation {conversation_id} non trouvée en base")
+                return []
+                
+            # Récupérer les questions et réponses liées à cette conversation
+            # Ajustez ceci selon votre modèle de données réel
+            from app.models.model import Question, Response
+            
+            # Récupérer toutes les questions pour cette conversation
+            questions = db.query(Question).filter(
+                Question.conversation_id == conversation.id
+            ).order_by(Question.created_at).all()
+            
+            history = []
+            
+            for question in questions:
+                # Récupérer la réponse associée à cette question
+                response = db.query(Response).filter(
+                    Response.question_id == question.id
+                ).first()
+                
+                history.append({
+                    "role": "user",
+                    "content": question.question_text,
+                    "timestamp": question.created_at.isoformat() if hasattr(question, 'created_at') else None
+                })
+                
+                if response:
+                    history.append({
+                        "role": "assistant",
+                        "content": response.response_text,
+                        "timestamp": response.created_at.isoformat() if hasattr(response, 'created_at') else None
+                    })
+            
+            print(f"Historique récupéré: {len(history)} messages")
+            return history
+            
+        except Exception as e:
+            print(f"Erreur lors de la récupération de l'historique: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            return []
+        finally:
+            db.close()
 
     def clear_conversation(self, conversation_id: str) -> bool:
         success = self.conversations.delete(conversation_id)
