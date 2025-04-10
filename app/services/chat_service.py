@@ -121,6 +121,9 @@ class ChatService:
                 
                 # Si la conversation n'existe pas et qu'un user_id est fourni, créer la conversation
                 if not db_conversation:
+                    if not db_conversation:
+                         logger.info(f"🟢 Création d'une nouvelle conversation UUID={conversation_id} pour user_id={user_id}")
+
                     if user_id:
                         # Créer la conversation avec l'ID utilisateur fourni
                         db_conversation = Conversation(

@@ -1,16 +1,57 @@
 from fastapi import APIRouter, HTTPException, Depends
 from typing import List, Optional
+import uuid 
+import logging
 from sqlalchemy.orm import Session
 from app.schemas.chat import ChatRequest, ChatResponse
 from app.schemas.schema import ConversationSchema, ConversationWithHistory
 from app.models.model import Conversation, User
-from app.db.database import get_db
+from app.db.database import get_db,SessionLocal
 from app.services.chat_service import ChatService
 from app.api.endpoints.auth import get_current_user, get_optional_user  # Importer les fonctions d'authentification
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
 chat_service = ChatService()
 
+
+@router.post("/new-conversation", response_model=ChatResponse)
+async def create_new_conversation(
+    current_user: User = Depends(get_current_user)  # Authentification obligatoire
+):
+    """
+    Crée une nouvelle conversation vide pour l'utilisateur.
+    Retourne l'ID de la nouvelle conversation.
+    L'utilisateur doit être connecté pour utiliser cette fonctionnalité.
+    """
+    try:
+        # Générer un nouvel ID de conversation unique
+        conversation_id = str(uuid.uuid4())
+        
+        # Enregistrer la conversation vide en base de données
+        db = SessionLocal()
+        try:
+            # Créer une nouvelle conversation associée à l'utilisateur actuel
+            db_conversation = Conversation(
+                uuid=conversation_id,
+                user_id=current_user.id,
+                category="other"  # Catégorie par défaut
+            )
+            db.add(db_conversation)
+            db.commit()
+            db.refresh(db_conversation)
+            
+        finally:
+            db.close()
+        
+        # Retourner les infos de la nouvelle conversation avec le champ answer requis
+        return {
+            "conversation_id": conversation_id,
+            "message": "Nouvelle conversation créée avec succès",
+            "answer": "Bonjour, comment puis-je vous aider aujourd'hui?",  # Champ requis
+            "greeting": "Bonjour, comment puis-je vous aider aujourd'hui?"
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 @router.post("/query", response_model=ChatResponse)
 async def process_query(
     request: ChatRequest,
@@ -23,8 +64,7 @@ async def process_query(
     """
     try:
         # L'utilisateur est toujours connecté ici
-        user_id = current_user.id
-        response = await chat_service.process_query(request, user_id=user_id)
+        response = await chat_service.process_query(request, user_id=current_user.id)
         return response
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
