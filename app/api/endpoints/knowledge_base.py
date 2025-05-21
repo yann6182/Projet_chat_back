@@ -1,4 +1,3 @@
-# app/api/endpoints/knowledge_base.py
 from fastapi import APIRouter, HTTPException
 from app.schemas.knowledge_base import SearchRequest, SearchResponse, LegalDocument
 from app.services.retrieval_service import RetrievalService
