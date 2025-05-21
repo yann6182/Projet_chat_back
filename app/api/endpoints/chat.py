@@ -42,7 +42,6 @@ async def continue_conversation(conversation_id: str, request: ChatRequest):
     Continue une conversation existante identifiée par son ID.
     """
     try:
-        # Passez le conversation_id comme paramètre séparé
         response = await chat_service.process_query(request, conversation_id=conversation_id)
         return response
     except Exception as e:
