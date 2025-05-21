@@ -9,8 +9,8 @@ class EmbeddingService:
     def __init__(self, model_name: str = "all-MiniLM-L6-v2", index_path: str = "./vector_store/index.faiss"):
         self.model = SentenceTransformer(model_name)
         self.index_path = index_path
-        self.index = faiss.IndexFlatL2(384)  # 384 = dim for MiniLM
-        self.meta_data: List[Dict] = []  # Pour stocker les infos (texte, source...)
+        self.index = faiss.IndexFlatL2(384) 
+        self.meta_data: List[Dict] = []  
 
     def build_index(self, documents: List[Dict]):
         texts = [doc["content"] for doc in documents]
@@ -48,7 +48,6 @@ class EmbeddingService:
         return [self.meta_data[i] for i in I[0] if i < len(self.meta_data)]
 
 
-# Exemple d'utilisation
 if __name__ == "__main__":
     from app.services.document_loader import DocumentLoader
 
