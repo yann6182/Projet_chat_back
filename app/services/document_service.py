@@ -1,4 +1,3 @@
-# app/services/document_service.py
 from typing import Dict, List, BinaryIO, Optional
 import os
 import uuid
@@ -10,12 +9,10 @@ from app.schemas.document import DocumentAnalysisResponse, SpellingError, Gramma
 
 class DocumentService:
     def __init__(self):
-        # Charger le modèle spaCy pour l'analyse linguistique en français
         self.nlp = spacy.load("fr_core_news_md")
         self.upload_dir = "data/user_uploads"
         os.makedirs(self.upload_dir, exist_ok=True)
         
-        # Liste de termes juridiques spécifiques aux Juniors Entreprises
         self.legal_terms = [
             "junior entreprise", "statut associatif", "CNJE", "étudiant entrepreneur",
             "prestation intellectuelle", "convention", "facturation", "TVA",
@@ -34,16 +31,12 @@ class DocumentService:
         Returns:
             L'identifiant unique du document
         """
-        # Générer un ID unique pour le document
         document_id = str(uuid.uuid4())
         
-        # Déterminer l'extension du fichier
         _, ext = os.path.splitext(filename)
         
-        # Créer le chemin complet
         file_path = os.path.join(self.upload_dir, f"{document_id}{ext}")
         
-        # Sauvegarder le fichier
         with open(file_path, "wb") as f:
             f.write(file.read())
             
@@ -59,25 +52,20 @@ class DocumentService:
         Returns:
             Le résultat de l'analyse du document
         """
-        # Trouver le fichier correspondant à l'ID
         file_path, filename = self.find_document_by_id(document_id)
         
         if not file_path:
             raise FileNotFoundError(f"Document avec l'ID {document_id} non trouvé")
             
-        # Extraire le texte du document
         text = self.extract_text(file_path)
         
-        # Analyser le texte
         spelling_errors = self.check_spelling(text)
         grammar_errors = self.check_grammar(text)
         legal_compliance_issues = self.check_legal_compliance(text)
         
-        # Calculer un score de conformité global
         total_issues = len(spelling_errors) + len(grammar_errors) + len(legal_compliance_issues)
         compliance_score = max(0.0, 1.0 - (total_issues / 100)) if total_issues > 0 else 1.0
         
-        # Générer des suggestions d'amélioration
         suggestions = self.generate_suggestions(text, spelling_errors, grammar_errors, legal_compliance_issues)
         
         return DocumentAnalysisResponse(
@@ -187,13 +175,10 @@ class DocumentService:
         Returns:
             Une liste d'erreurs d'orthographe
         """
-        # Utiliser spaCy pour vérifier l'orthographe
-        # Ceci est une implémentation simplifiée
         doc = self.nlp(text)
         errors = []
         
-        # Simuler la détection d'erreurs d'orthographe
-        # Dans un cas réel, vous utiliseriez un correcteur orthographique plus avancé
+       
         for token in doc:
             if token.is_alpha and not token.is_stop and len(token.text) > 3:
                 # Simuler une erreur pour certains mots (à remplacer par une véritable vérification)
@@ -218,13 +203,9 @@ class DocumentService:
         Returns:
             Une liste d'erreurs grammaticales
         """
-        # Utiliser spaCy pour vérifier la grammaire
-        # Ceci est une implémentation simplifiée
         doc = self.nlp(text)
         errors = []
         
-        # Simuler la détection d'erreurs grammaticales
-        # Dans un cas réel, vous utiliseriez un vérificateur grammatical plus avancé
         for i, token in enumerate(doc):
             if token.is_alpha and i > 0:
                 # Vérifier les accords simples (exemple simplifié)
@@ -254,7 +235,6 @@ class DocumentService:
         doc = self.nlp(text.lower())
         issues = []
         
-        # Vérifier la présence de termes juridiques importants
         missing_terms = []
         for term in self.legal_terms:
             if term not in text.lower():
@@ -271,7 +251,6 @@ class DocumentService:
                 )
             )
         
-        # Vérifier les mentions légales obligatoires (exemple simplifié)
         if "TVA" in text and "numéro de TVA" not in text.lower():
             issues.append(
                 LegalComplianceIssue(
@@ -302,19 +281,15 @@ class DocumentService:
         """
         suggestions = []
         
-        # Suggestions basées sur les erreurs d'orthographe
         if spelling_errors:
             suggestions.append(f"Corrigez les {len(spelling_errors)} erreurs d'orthographe identifiées.")
         
-        # Suggestions basées sur les erreurs grammaticales
         if grammar_errors:
             suggestions.append(f"Corrigez les {len(grammar_errors)} erreurs grammaticales identifiées.")
         
-        # Suggestions basées sur les problèmes de conformité légale
         for issue in legal_issues:
             suggestions.append(issue.recommendation)
         
-        # Suggestions générales
         if "junior entreprise" not in text.lower():
             suggestions.append("Mentionnez explicitement 'Junior Entreprise' dans votre document.")
         
@@ -322,7 +297,6 @@ class DocumentService:
             suggestions.append("Considérez mentionner la CNJE (Confédération Nationale des Junior-Entreprises).")
         
         return suggestions
-# filepath: d:\Projet_chat_back\app\services\document_service.py
 def process_document(content: bytes, filename: str) -> dict:
     """
     Traite un document et retourne les résultats de l'analyse.
@@ -334,5 +308,4 @@ def process_document(content: bytes, filename: str) -> dict:
     Returns:
         Un dictionnaire contenant les résultats de l'analyse.
     """
-    # Exemple de traitement (à adapter selon vos besoins)
     return {"filename": filename, "status": "processed"}
