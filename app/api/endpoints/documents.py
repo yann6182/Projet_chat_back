@@ -1,4 +1,3 @@
-# app/api/endpoints/documents.py
 from fastapi import APIRouter, UploadFile, File, HTTPException, Form
 from typing import List
 from app.schemas.document import DocumentAnalysisRequest, DocumentAnalysisResponse, DocumentUploadResponse
