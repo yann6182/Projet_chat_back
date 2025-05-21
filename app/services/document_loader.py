@@ -1,5 +1,5 @@
 import os
-import fitz  # PyMuPDF
+import fitz 
 from typing import List
 
 class DocumentLoader:
@@ -48,7 +48,6 @@ class DocumentLoader:
             "page": None
         }]
 
-# Exemple d'utilisation
 if __name__ == "__main__":
     loader = DocumentLoader("./data")
     docs = loader.load_documents()
