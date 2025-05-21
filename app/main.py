@@ -26,7 +26,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Route de base
 @app.get("/")
 async def root():
     return {"message": "Bienvenue sur mon API FastAPI"}
