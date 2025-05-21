@@ -73,7 +73,6 @@ class ChatService:
         self.timestamps[conversation_id] = time.time()
 
         try:
-            # 🔍 Étape RAG : recherche de documents similaires
             relevant_documents = self.embedding_service.search(request.query, k=3)
             context = ""
             if relevant_documents:
@@ -92,10 +91,8 @@ class ChatService:
 
             self.conversations.put(conversation_id, conversation_history)
 
-            # 💾 Enregistrer en base de données
             db: Session = SessionLocal()
             try:
-                # Créer ou récupérer la conversation
                 db_conversation = db.query(Conversation).filter_by(uuid=conversation_id).first()
                 if not db_conversation:
                     db_conversation = Conversation(uuid=conversation_id)
