@@ -1,4 +1,3 @@
-# app/services/retrieval_service.py
 from typing import List, Dict, Any, Optional
 import os
 from langchain.embeddings import HuggingFaceEmbeddings
@@ -9,12 +8,10 @@ from app.schemas.knowledge_base import LegalDocument
 
 class RetrievalService:
     def __init__(self):
-        # Initialiser les embeddings avec un modèle multilingue pour le français
         self.embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2")
         self.vector_store_path = "data/vector_store"
         self.legal_docs_path = "data/legal_docs"
         
-        # Initialiser le vector store
         self.initialize_vector_store()
         
     def initialize_vector_store(self):
@@ -22,20 +19,16 @@ class RetrievalService:
         Initialise ou charge la base de données vectorielle pour la recherche de similarité.
         """
         if os.path.exists(self.vector_store_path):
-            # Charger un vector store existant
             self.vector_store = FAISS.load_local(self.vector_store_path, self.embeddings)
         else:
-            # Créer un nouveau vector store à partir des documents juridiques
             documents = self.load_legal_documents()
             if documents:
                 text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
                 texts = text_splitter.split_documents(documents)
                 self.vector_store = FAISS.from_documents(texts, self.embeddings)
-                # Sauvegarder le vector store pour une utilisation future
                 os.makedirs(os.path.dirname(self.vector_store_path), exist_ok=True)
                 self.vector_store.save_local(self.vector_store_path)
             else:
-                # Créer un vector store vide si aucun document n'est disponible
                 self.vector_store = FAISS.from_texts(["Document placeholder"], self.embeddings)
     
     def load_legal_documents(self) -> List[Any]:
@@ -47,20 +40,16 @@ class RetrievalService:
         """
         documents = []
         
-        # Vérifier si le répertoire existe
         if not os.path.exists(self.legal_docs_path):
             os.makedirs(self.legal_docs_path, exist_ok=True)
             return documents
         
-        # Parcourir tous les fichiers dans le répertoire
         for filename in os.listdir(self.legal_docs_path):
             file_path = os.path.join(self.legal_docs_path, filename)
             
-            # Ignorer les répertoires
             if os.path.isdir(file_path):
                 continue
                 
-            # Charger le document en fonction de son extension
             try:
                 if filename.endswith('.pdf'):
                     loader = PyPDFLoader(file_path)
@@ -87,10 +76,8 @@ class RetrievalService:
         Returns:
             Une liste de documents juridiques pertinents
         """
-        # Rechercher les documents similaires dans le vector store
         docs_with_scores = self.vector_store.similarity_search_with_score(query, k=top_k)
         
-        # Convertir les résultats en objets LegalDocument
         legal_documents = []
         for doc, score in docs_with_scores:
             legal_doc = LegalDocument(
@@ -117,12 +104,10 @@ class RetrievalService:
         Returns:
             La requête augmentée
         """
-        # Extraire le contenu des documents
         context = ""
         for doc in documents:
             context += f"\nSource: {doc.source}\n{doc.content}\n"
             
-        # Créer la requête augmentée
         augmented_query = f"""
         Question: {query}
         
@@ -152,7 +137,6 @@ class RetrievalService:
             True si l'ajout a réussi, False sinon
         """
         try:
-            # Ajouter le document au vector store
             self.vector_store.add_texts(
                 texts=[document.content],
                 metadatas=[{
@@ -164,7 +148,6 @@ class RetrievalService:
                 }]
             )
             
-            # Sauvegarder le vector store mis à jour
             self.vector_store.save_local(self.vector_store_path)
             
             return True
@@ -182,6 +165,4 @@ class RetrievalService:
         Returns:
             Une liste de documents juridiques provenant de sources externes
         """
-        # Cette méthode serait implémentée pour interroger des API externes
-        # Pour l'instant, nous retournons une liste vide
         return []
