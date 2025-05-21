@@ -1,4 +1,3 @@
-# app/schemas/document.py
 from pydantic import BaseModel
 from typing import List, Dict, Optional
 from enum import Enum
