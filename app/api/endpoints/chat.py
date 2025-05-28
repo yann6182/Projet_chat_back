@@ -5,7 +5,7 @@ import logging
 from sqlalchemy.orm import Session
 from app.schemas.chat import ChatRequest, ChatResponse
 from app.schemas.schema import ConversationSchema, ConversationWithHistory
-from app.models.model import Conversation, User
+from app.models.model import Conversation, User, Question, Response
 from app.db.database import get_db,SessionLocal
 from app.services.chat_service import ChatService
 from app.api.endpoints.auth import get_current_user, get_optional_user  # Importer les fonctions d'authentification
@@ -16,49 +16,54 @@ chat_service = ChatService()
 
 @router.post("/new-conversation", response_model=ChatResponse)
 async def create_new_conversation(
+    request: ChatRequest,
+    db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)  # Authentification obligatoire
 ):
     """
-    Crée une nouvelle conversation vide pour l'utilisateur.
-    Retourne l'ID de la nouvelle conversation.
+    Crée une nouvelle conversation avec un titre généré automatiquement par l'IA.
     """
     try:
         # Générer un nouvel ID de conversation unique
         conversation_id = str(uuid.uuid4())
         
-        # Enregistrer la conversation vide en base de données
-        db = SessionLocal()
-        try:
-            db_conversation = Conversation(
-                uuid=conversation_id,
-                user_id=current_user.id,
-                category="other"  # Catégorie par défaut
-            )
-            db.add(db_conversation)
-            db.commit()
-            db.refresh(db_conversation)
-        finally:
-            db.close()
+        # Déterminer la catégorie et générer le titre automatiquement
+        category = chat_service._determine_category(request.query)
+        title = chat_service._generate_title(request.query)
+
+        # Enregistrer la conversation en base de données
+        db_conversation = Conversation(
+            uuid=conversation_id,
+            user_id=current_user.id,
+            category=category,
+            title=title  # Titre généré automatiquement
+        )
+        db.add(db_conversation)
+        db.commit()
+        db.refresh(db_conversation)
         
-        # Retourner l'ID de la conversation pour l'utiliser dans les requêtes suivantes
         return ChatResponse(
-            conversation_id=conversation_id,
-            answer="Nouvelle conversation créée avec succès. Comment puis-je vous aider ?",
-            sources=[]
+            answer="Nouvelle conversation créée avec succès.",
+            sources=[],
+            conversation_id=conversation_id
         )
     except Exception as e:
+        db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
 @router.post("/query", response_model=ChatResponse)
 async def process_query(
     request: ChatRequest,
     conversation_id: Optional[str] = None,  # Ajout de l'ID de la conversation
-
     current_user: User = Depends(get_current_user)  # Authentification obligatoire
 ):
     """
     Traite une requête utilisateur et génère une réponse juridique.
     Un nouveau conversation_id est généré automatiquement.
     L'utilisateur doit être connecté pour utiliser cette fonctionnalité.
+    
+    La requête peut inclure des documents contextuels (context_documents) fournis par le front-end
+    pour enrichir la réponse. Ces documents seront utilisés en plus des documents trouvés
+    dans la base de connaissances vectorielle.
     """
     try:
         # L'utilisateur est toujours connecté ici
@@ -79,6 +84,9 @@ async def continue_conversation(
     Continue une conversation existante identifiée par son ID.
     Vérifie que l'utilisateur a accès à cette conversation.
     L'utilisateur doit être connecté pour utiliser cette fonctionnalité.
+    
+    Comme pour /query, la requête peut inclure des documents contextuels (context_documents) 
+    fournis par le front-end pour enrichir la réponse de l'IA.
     """
     try:
         # Vérifier si la conversation appartient à l'utilisateur actuel
@@ -296,3 +304,35 @@ def get_user_conversations(
             status_code=500, 
             detail=f"Erreur lors de la récupération des conversations: {str(e)}"
         )
+    
+@router.delete("/delete/{conversation_id}", response_model=dict)
+async def delete_conversation(
+    conversation_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)  # Authentification obligatoire
+):
+    """
+    Supprime une conversation et toutes ses questions/réponses associées.
+    """
+    try:
+        # Vérifier si la conversation existe
+        conversation = db.query(Conversation).filter(Conversation.uuid == conversation_id).first()
+        if not conversation:
+            raise HTTPException(status_code=404, detail="Conversation non trouvée")
+
+        # Vérifier si l'utilisateur est autorisé à supprimer cette conversation
+        if conversation.user_id != current_user.id:
+            raise HTTPException(status_code=403, detail="Vous n'avez pas l'autorisation de supprimer cette conversation")
+
+        # Supprimer les questions et réponses associées
+        db.query(Response).filter(Response.conversation_id == conversation.id).delete()
+        db.query(Question).filter(Question.conversation_id == conversation.id).delete()
+
+        # Supprimer la conversation
+        db.delete(conversation)
+        db.commit()
+
+        return {"message": "Conversation supprimée avec succès"}
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Erreur lors de la suppression de la conversation: {str(e)}")

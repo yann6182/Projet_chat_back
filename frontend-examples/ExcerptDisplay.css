@@ -1,0 +1,106 @@
+/* ExcerptDisplay.css */
+
+.excerpt-display {
+  margin-top: 20px;
+  border: 1px solid #e1e4e8;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.tabs {
+  display: flex;
+  background-color: #f6f8fa;
+  border-bottom: 1px solid #e1e4e8;
+}
+
+.tab {
+  padding: 8px 16px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  color: #586069;
+  transition: color 0.2s;
+}
+
+.tab:hover {
+  color: #0366d6;
+}
+
+.tab.active {
+  color: #24292e;
+  border-bottom: 2px solid #0366d6;
+}
+
+.tab-content {
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.excerpts-list, .sources-list {
+  padding: 10px;
+}
+
+.excerpt-item {
+  margin-bottom: 10px;
+  border: 1px solid #e1e4e8;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.excerpt-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  background-color: #f6f8fa;
+  cursor: pointer;
+}
+
+.excerpt-source {
+  font-weight: 500;
+  flex-grow: 1;
+}
+
+.excerpt-page {
+  margin: 0 10px;
+  padding: 2px 6px;
+  background-color: #e1e4e8;
+  border-radius: 10px;
+  font-size: 12px;
+}
+
+.expand-icon {
+  margin-left: 10px;
+  color: #586069;
+}
+
+.excerpt-content {
+  padding: 10px 12px;
+  background-color: #fff;
+  border-top: 1px solid #e1e4e8;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.excerpt-item.expanded .excerpt-content {
+  border-top: 1px solid #e1e4e8;
+}
+
+.source-item {
+  padding: 8px 0;
+  border-bottom: 1px solid #e1e4e8;
+  font-size: 14px;
+}
+
+.source-item:last-child {
+  border-bottom: none;
+}
+
+.no-data {
+  color: #586069;
+  font-style: italic;
+  text-align: center;
+  padding: 20px;
+}

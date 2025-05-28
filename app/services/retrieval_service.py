@@ -1,10 +1,10 @@
 # app/services/retrieval_service.py
 from typing import List, Dict, Any, Optional
 import os
-from langchain.embeddings import HuggingFaceEmbeddings
-from langchain.vectorstores import FAISS
+from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain_community.vectorstores import FAISS
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain.document_loaders import TextLoader, PyPDFLoader, Docx2txtLoader
+from langchain_community.document_loaders import TextLoader, PyPDFLoader, Docx2txtLoader
 from app.schemas.knowledge_base import LegalDocument
 
 class RetrievalService:

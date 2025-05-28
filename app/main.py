@@ -3,7 +3,7 @@ import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.db.database import engine, Base
-from app.api.endpoints import users, chat, documents, knowledge_base, auth
+from app.api.endpoints import users, chat, documents, knowledge_base, auth, file_chat
 
 Base.metadata.create_all(bind=engine)
 # Création de l'application FastAPI
@@ -42,3 +42,4 @@ app.include_router(chat.router)
 app.include_router(documents.router)
 app.include_router(knowledge_base.router)
 app.include_router(auth.router)
+app.include_router(file_chat.router)

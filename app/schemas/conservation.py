@@ -9,13 +9,21 @@ class ConversationBase(BaseModel):
 class ConversationCreate(ConversationBase):
     pass
 
-class ConversationResponse(ConversationBase):
+class ConversationUpdate(BaseModel):
+    title: Optional[str] = None
+    category: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+class Conversation(ConversationBase):
     id: int
     uuid: str
     created_at: datetime
+    updated_at: datetime
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 class QuestionBase(BaseModel):
     question_text: str

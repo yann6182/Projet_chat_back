@@ -13,21 +13,21 @@ class ItemSchema(ItemBase):
     id: int
     
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 class QuestionSchema(BaseModel):
     user_id: int
     question_text: str
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 class ResponseSchema(BaseModel):
     question_id: int
     response_text: str
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 # Nouveaux schémas pour l'authentification
 class UserBase(BaseModel):
@@ -47,7 +47,7 @@ class UserSchema(UserBase):
     created_at: datetime
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 class Token(BaseModel):
     access_token: str
@@ -75,7 +75,7 @@ class ConversationSchema(ConversationBase):
     updated_at: Optional[datetime] = None
     
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 # Schémas améliorés pour les questions et réponses
 class QuestionCreate(BaseModel):
@@ -88,7 +88,7 @@ class QuestionWithResponseSchema(QuestionSchema):
     responses: List[ResponseSchema] = []
     
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 class ResponseCreate(BaseModel):
     question_id: int
@@ -98,4 +98,80 @@ class ConversationWithHistory(ConversationSchema):
     questions: List[QuestionWithResponseSchema] = []
     
     class Config:
-        orm_mode = True
+        from_attributes = True
+
+class DocumentBase(BaseModel):
+    title: str
+    content: str
+    source: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+class DocumentCreate(DocumentBase):
+    pass
+
+
+class Document(DocumentBase):
+    id: int
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class KnowledgeBaseBase(BaseModel):
+    name: str
+    description: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+class KnowledgeBaseCreate(KnowledgeBaseBase):
+    pass
+
+
+class KnowledgeBase(KnowledgeBaseBase):
+    id: int
+    created_at: datetime
+    updated_at: datetime
+    documents: List[Document] = []
+
+    class Config:
+        from_attributes = True
+
+
+class QuestionBase(BaseModel):
+    question_text: str
+
+    class Config:
+        from_attributes = True
+
+
+class Question(QuestionBase):
+    id: int
+    conversation_id: int
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class ResponseBase(BaseModel):
+    response_text: str
+
+    class Config:
+        from_attributes = True
+
+
+class Response(ResponseBase):
+    id: int
+    conversation_id: int
+    question_id: int
+    created_at: datetime
+
+    class Config:
+        from_attributes = True

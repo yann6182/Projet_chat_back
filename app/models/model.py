@@ -23,6 +23,7 @@ class Conversation(Base):
     uuid = Column(String, unique=True, index=True, default=lambda: str(uuid.uuid4()))  # identifiant public
     user_id = Column(Integer, ForeignKey("users.id"))  # Ajout de la clé étrangère manquante
     category = Column(String, index=True, default="other")
+    title = Column(String, index=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, onupdate=datetime.utcnow)
 
