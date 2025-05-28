@@ -8,8 +8,7 @@ from langchain_community.document_loaders import TextLoader, PyPDFLoader, Docx2t
 from app.schemas.knowledge_base import LegalDocument
 
 class RetrievalService:
-    def __init__(self):
-        # Initialiser les embeddings avec un modèle multilingue pour le français
+    def __init__(self):        # Initialiser les embeddings avec un modèle multilingue pour le français
         self.embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2")
         self.vector_store_path = "data/vector_store"
         self.legal_docs_path = "data/legal_docs"
@@ -23,7 +22,11 @@ class RetrievalService:
         """
         if os.path.exists(self.vector_store_path):
             # Charger un vector store existant
-            self.vector_store = FAISS.load_local(self.vector_store_path, self.embeddings)
+            self.vector_store = FAISS.load_local(
+                self.vector_store_path, 
+                self.embeddings,
+                allow_dangerous_deserialization=True  # Sécurisé car le fichier est créé par notre application
+            )
         else:
             # Créer un nouveau vector store à partir des documents juridiques
             documents = self.load_legal_documents()
