@@ -3,10 +3,9 @@ import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.db.database import engine, Base
-from app.api.endpoints import users, chat, documents, knowledge_base, auth, file_chat
+from app.api.endpoints import users, chat, documents, knowledge_base, auth, file_chat, admin
 
 Base.metadata.create_all(bind=engine)
-# Création de l'application FastAPI
 app = FastAPI(
     title="Juridica API",
     description="API pour le projet Juridica",
@@ -37,9 +36,10 @@ app.add_middleware(
 async def root():
     return {"message": "Bienvenue sur mon API FastAPI"}
 
-app.include_router(users.router)
-app.include_router(chat.router)
-app.include_router(documents.router)
-app.include_router(knowledge_base.router)
-app.include_router(auth.router)
-app.include_router(file_chat.router)
+app.include_router(users.router, prefix="/api")
+app.include_router(chat.router, prefix="/api")
+app.include_router(documents.router, prefix="/api")
+app.include_router(knowledge_base.router, prefix="/api")
+app.include_router(auth.router, prefix="/api")
+app.include_router(file_chat.router, prefix="/api")
+app.include_router(admin.router, prefix="/api/admin", tags=["admin"])

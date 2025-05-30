@@ -22,6 +22,46 @@
   margin-bottom: 0;
 }
 
+/* Styles pour le contenu Markdown */
+.markdown-content h1, 
+.markdown-content h2, 
+.markdown-content h3 {
+  margin-top: 20px;
+  margin-bottom: 12px;
+  color: #2c3e50;
+  font-weight: 600;
+}
+
+.markdown-content h1 {
+  font-size: 24px;
+}
+
+.markdown-content h2 {
+  font-size: 20px;
+}
+
+.markdown-content h3 {
+  font-size: 18px;
+}
+
+.markdown-content ul, 
+.markdown-content ol {
+  margin-left: 20px;
+  margin-bottom: 12px;
+}
+
+.markdown-content strong {
+  font-weight: 600;
+}
+
+.markdown-content blockquote {
+  border-left: 4px solid #e1e4e8;
+  padding-left: 15px;
+  color: #586069;
+  font-style: italic;
+  margin: 12px 0;
+}
+
 .sources-toggle {
   margin-top: 15px;
   padding-top: 15px;

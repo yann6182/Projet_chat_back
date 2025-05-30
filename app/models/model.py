@@ -12,6 +12,7 @@ class User(Base):
     username = Column(String, unique=True, index=True)
     hashed_password = Column(String, nullable=False)
     is_active = Column(Boolean, default=True)
+    is_admin = Column(Boolean, default=False)  # Champ pour les droits administrateur
     created_at = Column(DateTime, default=datetime.utcnow)
     
     conversations = relationship("Conversation", back_populates="user")

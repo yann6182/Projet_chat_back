@@ -1,0 +1,97 @@
+.admin-page {
+  min-height: 100vh;
+  background-color: #f5f7fa;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+}
+
+.admin-header {
+  background-color: #2c3e50;
+  color: white;
+  padding: 16px 24px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.admin-header h1 {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 500;
+}
+
+.admin-user-info {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.logout-button {
+  background-color: transparent;
+  border: 1px solid white;
+  color: white;
+  padding: 8px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.3s, color 0.3s;
+}
+
+.logout-button:hover {
+  background-color: white;
+  color: #2c3e50;
+}
+
+.admin-nav {
+  background-color: white;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.admin-nav ul {
+  display: flex;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.admin-nav li {
+  padding: 16px 24px;
+  cursor: pointer;
+  transition: background-color 0.3s;
+  color: #555;
+  border-bottom: 2px solid transparent;
+}
+
+.admin-nav li:hover {
+  background-color: #f8f9fa;
+  color: #2c3e50;
+}
+
+.admin-nav li.active {
+  border-bottom: 2px solid #3498db;
+  color: #2c3e50;
+  font-weight: 500;
+}
+
+.admin-content {
+  padding: 24px;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.coming-soon {
+  background-color: white;
+  border-radius: 8px;
+  padding: 24px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  text-align: center;
+}
+
+.coming-soon h2 {
+  color: #333;
+  margin-top: 0;
+}
+
+.coming-soon p {
+  color: #666;
+  font-style: italic;
+}

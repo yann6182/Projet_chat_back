@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import ExcerptDisplay from './ExcerptDisplay';
 import './ChatResponse.css';
+import ReactMarkdown from 'react-markdown';
 
 /**
  * Composant pour afficher une réponse du chatbot, avec la réponse et les sources
@@ -21,12 +22,9 @@ const ChatResponse = ({ response }) => {
 
   return (
     <div className="chat-response">
-      <div className="response-content">
-        {/* Affichage de la réponse principale */}
-        <div className="response-text">
-          {answer.split('\n').map((paragraph, i) => (
-            <p key={i}>{paragraph}</p>
-          ))}
+      <div className="response-content">        {/* Affichage de la réponse principale avec Markdown */}
+        <div className="response-text markdown-content">
+          <ReactMarkdown>{answer}</ReactMarkdown>
         </div>
         
         {/* Affichage des extraits et sources */}

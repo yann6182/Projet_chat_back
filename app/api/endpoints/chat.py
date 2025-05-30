@@ -10,7 +10,7 @@ from app.db.database import get_db,SessionLocal
 from app.services.chat_service import ChatService
 from app.api.endpoints.auth import get_current_user, get_optional_user  # Importer les fonctions d'authentification
 
-router = APIRouter(prefix="/api/chat", tags=["chat"])
+router = APIRouter(prefix="/chat", tags=["chat"])
 chat_service = ChatService()
 
 

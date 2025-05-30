@@ -13,7 +13,7 @@ from app.services.chat_service import ChatService
 from app.services.file_service import FileService
 from app.api.endpoints.auth import get_current_user
 
-router = APIRouter(prefix="/api/file-chat", tags=["file-chat"])
+router = APIRouter(prefix="/file-chat", tags=["file-chat"])
 chat_service = ChatService()
 file_service = FileService()
 

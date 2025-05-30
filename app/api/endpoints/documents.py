@@ -5,7 +5,7 @@ from app.schemas.document import DocumentAnalysisRequest, DocumentAnalysisRespon
 from app.services.document_service import DocumentService
 from app.services.document_service import process_document
 
-router = APIRouter(prefix="/api/documents", tags=["documents"])
+router = APIRouter(prefix="/documents", tags=["documents"])
 document_service = DocumentService()
 
 @router.post("/upload", response_model=DocumentUploadResponse)

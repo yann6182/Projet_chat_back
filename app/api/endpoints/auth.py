@@ -5,7 +5,13 @@ from fastapi import APIRouter, Depends, HTTPException, status, Response, Request
 from fastapi.security import OAuth2PasswordRequestForm
 from jose import JWTError, jwt
 from sqlalchemy.orm import Session
-from app.core.security import verify_password, create_access_token, get_password_hash
+from app.core.security import (
+    verify_password, 
+    create_access_token, 
+    get_password_hash, 
+    get_current_user,
+    get_optional_user
+)
 from app.core.config import settings
 from app.db.database import get_db
 from app.models.model import User
@@ -245,3 +251,30 @@ async def check_auth(
     
     logger.info("Aucun utilisateur authentifié")
     return {"authenticated": False}
+
+@router.get("/check-admin")
+async def check_admin_status(
+    current_user: Optional[User] = Depends(get_optional_user)
+):
+    """
+    Vérifie si l'utilisateur actuel a des privilèges d'administrateur.
+    Retourne un statut 200 avec is_admin=True si c'est le cas, sinon is_admin=False.
+    Ne renvoie pas d'erreur 401 si l'utilisateur n'est pas connecté.
+    """
+    if not current_user:
+        logger.warning("Tentative de vérification du statut admin sans être connecté")
+        return {
+            "is_admin": False,
+            "authenticated": False,
+            "message": "Utilisateur non connecté"
+        }
+    
+    logger.info(f"Vérification du statut admin pour l'utilisateur: {current_user.username} (ID: {current_user.id})")
+    
+    return {
+        "is_admin": current_user.is_admin,
+        "authenticated": True,
+        "username": current_user.username,
+        "email": current_user.email,
+        "user_id": current_user.id
+    }

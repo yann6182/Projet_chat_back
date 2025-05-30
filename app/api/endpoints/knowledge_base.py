@@ -5,7 +5,7 @@ from app.services.retrieval_service import RetrievalService
 from app.services.knowledge_base_service import search_knowledge_base
 
 
-router = APIRouter(prefix="/api/knowledge", tags=["knowledge"])
+router = APIRouter(prefix="/knowledge", tags=["knowledge"])
 retrieval_service = RetrievalService()
 
 @router.post("/search", response_model=SearchResponse)

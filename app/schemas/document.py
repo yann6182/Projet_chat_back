@@ -43,4 +43,9 @@ class DocumentAnalysisResponse(BaseModel):
     legal_compliance_issues: List[LegalComplianceIssue] = []
     overall_compliance_score: Optional[float] = None
     suggestions: List[str] = []
-    
+
+class DocumentResponse(BaseModel):
+    filename: str
+    filepath: str
+    size: int
+    description: Optional[str] = None
