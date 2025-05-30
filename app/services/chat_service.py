@@ -13,6 +13,8 @@ from app.db.database import SessionLocal
 from mistralai.client import MistralClient
 import os
 from fastapi import HTTPException
+import json
+from datetime import datetime
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -333,8 +335,7 @@ class ChatService:
                 db.add(db_question)
                 db.commit()
                 db.refresh(db_question)
-                
-                # Ajouter la réponse avec les données RAG (sources et extraits)
+                  # Ajouter la réponse avec les données RAG (sources et extraits)
                 db_response = Response(
                     response_text=answer,
                     conversation_id=db_conversation.id,
@@ -344,6 +345,16 @@ class ChatService:
                 )
                 db.add(db_response)
                 db.commit()
+                
+                # Vérifier si c'est le premier échange (1 question + 1 réponse)
+                # et mettre à jour le titre et la catégorie intelligemment
+                question_count = db.query(Question).filter(
+                    Question.conversation_id == db_conversation.id
+                ).count()
+                
+                if question_count == 1:
+                    logger.info(f"Premier échange détecté pour la conversation {conversation_id}, mise à jour des métadonnées...")
+                    await self.update_conversation_metadata(conversation_id, db)
             finally:
                 db.close()
             
@@ -551,3 +562,164 @@ Si cette question nécessite des informations juridiques spécialisées que tu n
         if conversation_id in self.timestamps:
             del self.timestamps[conversation_id]
         return success
+    
+    async def generate_smart_title(self, query: str, response: str) -> dict:
+        """
+        Génère un titre intelligent pour la conversation basé sur la première question et réponse.
+        Utilise le LLM pour créer un titre pertinent et déterminer la catégorie.
+        
+        Args:
+            query: La première question de l'utilisateur
+            response: La première réponse du système
+            
+        Returns:
+            Un dictionnaire contenant le titre et la catégorie
+        """
+        try:
+            # Liste des catégories disponibles
+            categories = ["treasury", "organisational", "legal", "general", "other"]
+            category_descriptions = {
+                "treasury": "Finance, comptabilité, budget, TVA, trésorerie",
+                "organisational": "Structure, organisation, management, équipe, gestion",
+                "legal": "Juridique, légal, contrats, règlements",
+                "general": "Questions générales sur l'entreprise",
+                "other": "Autres sujets"
+            }
+            
+            # Construction du prompt pour le LLM
+            prompt = f"""Analyse la question suivante et sa réponse, puis:
+1. Génère un titre concis en français (maximum 50 caractères) qui résume bien le sujet
+2. Classe cette conversation dans une de ces catégories: {', '.join(categories)}
+
+Descriptions des catégories:
+- treasury: {category_descriptions["treasury"]}
+- organisational: {category_descriptions["organisational"]}
+- legal: {category_descriptions["legal"]}
+- general: {category_descriptions["general"]}
+- other: {category_descriptions["other"]}
+
+Question: {query}
+
+Réponse: {response}
+
+Réponds exactement au format JSON suivant:
+{{
+  "title": "Titre concis",
+  "category": "catégorie choisie"
+}}
+"""
+            # Appel au LLM pour générer le titre et la catégorie
+            chat_response = self.client.chat(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": "Tu es un assistant qui analyse des conversations et génère des titres pertinents."},
+                    {"role": "user", "content": prompt}
+                ]
+            )
+            
+            # Extraire la réponse du modèle
+            result_text = chat_response.choices[0].message.content
+            
+            try:
+                # Extraire le JSON de la réponse
+                import json
+                import re
+                
+                # Chercher un objet JSON dans la réponse
+                json_match = re.search(r'({[\s\S]*})', result_text)
+                if json_match:
+                    result_json = json.loads(json_match.group(1))
+                else:
+                    # Fallback si le format n'est pas respecté
+                    logger.warning("Format JSON non respecté dans la réponse du LLM")
+                    return {
+                        "title": self._generate_title(query),  # Utiliser la méthode simple comme fallback
+                        "category": self._determine_category(query)
+                    }
+                
+                # Valider les champs requis
+                if "title" not in result_json or "category" not in result_json:
+                    raise ValueError("Les champs title et category sont requis dans la réponse")
+                
+                # Vérifier que la catégorie est valide
+                if result_json["category"] not in categories:
+                    result_json["category"] = "other"
+                
+                # Limiter la taille du titre si nécessaire
+                if len(result_json["title"]) > 50:
+                    result_json["title"] = result_json["title"][:47] + "..."
+                
+                logger.info(f"Titre généré: {result_json['title']}, Catégorie: {result_json['category']}")
+                return result_json
+                
+            except Exception as e:
+                logger.error(f"Erreur de parsing du JSON: {str(e)}")
+                # En cas d'erreur, utiliser les méthodes simples comme fallback
+                return {
+                    "title": self._generate_title(query),
+                    "category": self._determine_category(query)
+                }
+                
+        except Exception as e:
+            logger.error(f"Erreur lors de la génération du titre intelligent: {str(e)}")
+            # En cas d'erreur, utiliser les méthodes simples comme fallback
+            return {
+                "title": self._generate_title(query),
+                "category": self._determine_category(query)
+            }
+    
+    async def update_conversation_metadata(self, conversation_id: str, db: Session) -> bool:
+        """
+        Met à jour les métadonnées (titre et catégorie) d'une conversation après le premier échange.
+        
+        Args:
+            conversation_id: L'identifiant de la conversation
+            db: Session de base de données
+            
+        Returns:
+            True si la mise à jour a réussi, False sinon
+        """
+        try:
+            # Récupérer la conversation
+            conversation = db.query(Conversation).filter(Conversation.uuid == conversation_id).first()
+            if not conversation:
+                logger.warning(f"Conversation non trouvée pour l'ID {conversation_id}")
+                return False
+            
+            # Récupérer la première question et la première réponse
+            first_question = db.query(Question).filter(
+                Question.conversation_id == conversation.id
+            ).order_by(Question.created_at).first()
+            
+            if not first_question:
+                logger.warning(f"Aucune question trouvée pour la conversation {conversation_id}")
+                return False
+            
+            first_response = db.query(Response).filter(
+                Response.question_id == first_question.id
+            ).first()
+            
+            if not first_response:
+                logger.warning(f"Aucune réponse trouvée pour la première question de la conversation {conversation_id}")
+                return False
+            
+            # Générer un titre intelligent et une catégorie
+            metadata = await self.generate_smart_title(
+                query=first_question.question_text,
+                response=first_response.response_text
+            )
+            
+            # Mettre à jour la conversation
+            conversation.title = metadata["title"]
+            conversation.category = metadata["category"]
+            conversation.updated_at = datetime.utcnow()
+            
+            # Enregistrer les modifications
+            db.commit()
+            
+            logger.info(f"Métadonnées mises à jour pour la conversation {conversation_id}: {metadata}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Erreur lors de la mise à jour des métadonnées: {str(e)}")
+            return False
