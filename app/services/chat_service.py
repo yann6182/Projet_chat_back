@@ -212,14 +212,13 @@ class ChatService:
                             
                 except Exception as e:
                     logger.warning(f"❌ Impossible d'effectuer la recherche RAG: {str(e)}")
-            
-            # 3. 🔍 Étape ChromaDB : recherche de documents similaires dans ChromaDB, si activé
+              # 3. 🔍 Étape ChromaDB : recherche de documents similaires dans ChromaDB, si activé
             if self.use_chroma and hasattr(self, 'chroma_service'):
                 try:
                     chroma_documents = self.chroma_service.search(
                         query=request.query,
-                        top_k=3,  # Récupérer les 3 documents les plus pertinents
-                        filter=None  # Aucun filtre supplémentaire pour l'instant
+                        k=3,  # Récupérer les 3 documents les plus pertinents
+                        filter_criteria=None  # Aucun filtre supplémentaire pour l'instant
                     )
                     
                     logger.info(f"Documents trouvés dans ChromaDB: {len(chroma_documents)}")
@@ -295,19 +294,19 @@ class ChatService:
                 if not db_conversation:
                     logger.error(f"Conversation non trouvée pour conversation_id={conversation_id}")
 
-                    raise HTTPException(status_code=404, detail="Conversation non trouvée.")
-
-                # Ajouter la question
+                    raise HTTPException(status_code=404, detail="Conversation non trouvée.")                # Ajouter la question
                 db_question = Question(question_text=request.query, conversation_id=db_conversation.id)
                 db.add(db_question)
                 db.commit()
                 db.refresh(db_question)
-
-                # Ajouter la réponse
+                
+                # Ajouter la réponse avec les données RAG (sources et extraits)
                 db_response = Response(
                     response_text=answer,
                     conversation_id=db_conversation.id,
-                    question_id=db_question.id
+                    question_id=db_question.id,
+                    sources=sources if sources else None,  # Liste des sources
+                    excerpts=excerpts if excerpts else None  # Les extraits sont déjà au format dict
                 )
                 db.add(db_response)
                 db.commit()
@@ -412,13 +411,13 @@ Ma question: {query}"""
                     {"role": "user", "content": user_prompt}
                 ]
             )
-
+            
             return chat_response.choices[0].message.content
-
+            
         except Exception as e:
             logger.error(f"Erreur lors de la génération de réponse avec Mistral API: {str(e)}", exc_info=True)
             return "Je suis désolé, je ne peux pas générer de réponse pour le moment."
-
+            
     def _cleanup_expired_conversations(self):
         current_time = time.time()
         expired_ids = [
@@ -429,10 +428,11 @@ Ma question: {query}"""
             self.clear_conversation(conv_id)
             if conv_id in self.timestamps:
                 del self.timestamps[conv_id]
-
+                
     def get_conversation_history(self, conversation_id: str) -> List[dict]:
         """
-        Récupère l'historique complet d'une conversation à partir de son ID.
+        Récupère l'historique complet d'une conversation à partir de son ID,
+        y compris les données RAG (sources et extraits).
         """
         if not conversation_id:
             return []
@@ -449,7 +449,6 @@ Ma question: {query}"""
                 return []
                 
             # Récupérer les questions et réponses liées à cette conversation
-            # Ajustez ceci selon votre modèle de données réel
             from app.models.model import Question, Response
             
             # Récupérer toutes les questions pour cette conversation
@@ -472,11 +471,22 @@ Ma question: {query}"""
                 })
                 
                 if response:
-                    history.append({
+                    # Inclure les données RAG si disponibles
+                    response_data = {
                         "role": "assistant",
                         "content": response.response_text,
                         "timestamp": response.created_at.isoformat() if hasattr(response, 'created_at') else None
-                    })
+                    }
+                    
+                    # Ajouter les sources si disponibles
+                    if hasattr(response, 'sources') and response.sources:
+                        response_data["sources"] = response.sources
+                    
+                    # Ajouter les extraits si disponibles
+                    if hasattr(response, 'excerpts') and response.excerpts:
+                        response_data["excerpts"] = response.excerpts
+                    
+                    history.append(response_data)
             
             print(f"Historique récupéré: {len(history)} messages")
             return history

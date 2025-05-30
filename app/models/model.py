@@ -49,6 +49,8 @@ class Response(Base):
     conversation_id = Column(Integer, ForeignKey("conversations.id"), nullable=False)
     question_id = Column(Integer, ForeignKey("questions.id"), nullable=True)
     response_text = Column(String, nullable=False)
+    sources = Column(JSON, nullable=True)  # Stockage des sources sous forme de liste JSON
+    excerpts = Column(JSON, nullable=True)  # Stockage des extraits RAG sous forme de JSON
     created_at = Column(DateTime, default=datetime.utcnow)
 
     conversation = relationship("Conversation", back_populates="responses")
