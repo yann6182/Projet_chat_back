@@ -80,7 +80,7 @@ class ChromaService:
                 logger.info(f"📊 Taille de la collection : {self.collection.count()} documents")
             except ValueError:
                 logger.warning(f"⚠️ Collection '{collection_name}' non trouvée ! Veuillez indexer des documents.")
-                # Créer une collection vide
+                # Créer une collection vide                
                 self.collection = self.client.create_collection(
                     name=collection_name,
                     embedding_function=self.ef
@@ -88,12 +88,12 @@ class ChromaService:
         except Exception as e:
             logger.error(f"❌ Erreur lors de l'initialisation de ChromaDB: {str(e)}")
             self.collection = None
-    
+            
     def search(
         self,
         query: str,
         k: int = 3,
-        threshold: float = 0.25,
+        threshold: float = 0.35,  # Augmentation du seuil pour limiter les résultats non pertinents
         filter_criteria: Optional[Dict] = None
     ) -> List[Dict]:
         """

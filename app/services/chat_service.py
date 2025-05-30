@@ -120,18 +120,19 @@ class ChatService:
             
         Returns:
             La réponse structurée avec contexte et sources
-        """
-        # Déterminer la catégorie et nettoyer les conversations expirées
+        """        # Déterminer la catégorie et nettoyer les conversations expirées
         category = self._determine_category(request.query)
         self._cleanup_expired_conversations()
         
         # Récupérer l'historique ou initialiser une nouvelle conversation
         conversation_history = self.conversations.get(conversation_id) if conversation_id in self.conversations else []
         self.timestamps[conversation_id] = time.time()
+        
         try:
             # Collecter tous les documents pertinents (vectoriels + contexte fourni)
             all_relevant_documents = []
             sources = []
+            has_relevant_docs = False  # Variable pour suivre si des documents pertinents ont été trouvés
             
             # 1. Ajouter les documents contextuels fournis par le front-end, s'il y en a
             if hasattr(request, 'context_documents') and request.context_documents:
@@ -236,40 +237,74 @@ class ChatService:
                             
                 except Exception as e:
                     logger.warning(f"Impossible d'effectuer la recherche dans ChromaDB: {str(e)}")
-              
-            # Enrichissement du contexte avec tous les documents pertinents
+                # Enrichissement du contexte avec tous les documents pertinents
             context = ""
             # Préparer la liste des extraits utilisés pour la réponse
             excerpts = []
-            if all_relevant_documents:
-                context = "Contexte juridique pertinent:\n\n"
-                for i, doc in enumerate(all_relevant_documents, 1):
-                    # Limiter la taille des extraits pour éviter de dépasser le contexte
-                    excerpt = doc['content']
-                    if len(excerpt) > 800:  # Limiter à 800 caractères par extrait
-                        excerpt = excerpt[:800] + "..."
-
-                    # Inclure la source et le numéro de page si disponible
-                    source_info = doc['source']
-                    page = doc.get('page')
-                    if page:
-                        source_info += f" (page {page})"
-
-                    # Ajouter l'extrait au contexte
-                    context += f"Document {i}: {excerpt}\nSource: {source_info}\n\n"
-
-                    # Collecter les sources pour la réponse
-                    if source_info not in sources:
-                        sources.append(source_info)
-
-                    # Ajouter à la liste des extraits pour l'API
-                    excerpts.append({
-                        "content": excerpt,
-                        "source": doc['source'],
-                        "page": doc.get('page')
-                    })
+            # Évaluer la pertinence des documents trouvés
+            relevant_docs = []
+            has_relevant_docs = False
+            
+            # Ignorer les documents pour les questions très générales ou sans rapport avec le domaine juridique
+            simple_questions = ["ca va", "ça va", "comment vas-tu", "bonjour", "salut", "hello", "coucou"]
+            if any(simple_q in request.query.lower() for simple_q in simple_questions) and len(request.query) < 20:
+                # Si la requête est une question très simple/générale, ne pas inclure de sources
+                logger.info("Question générale détectée, pas de sources nécessaires")
+                all_relevant_documents = []
+            
+            if all_relevant_documents:# Filtrer les documents avec un score de pertinence élevé                # Exclure complètement les questions très générales
+                simple_questions = ["ca va", "ça va", "comment vas-tu", "bonjour", "salut", "hello", "coucou"]
+                is_simple_question = any(simple_q in request.query.lower() for simple_q in simple_questions) and len(request.query) < 20
+                
+                if not is_simple_question:
+                    for doc in all_relevant_documents:
+                        # Considérer les documents fournis comme toujours pertinents
+                        if 'score' in doc and doc['score'] > 0.7:  # Seuil encore plus élevé pour éviter les faux positifs
+                            relevant_docs.append(doc)
+                            has_relevant_docs = True
+                        elif doc.get('source', '').startswith('Document fourni'):
+                            # Les documents fournis par l'utilisateur sont toujours considérés comme pertinents
+                            relevant_docs.append(doc)
+                            has_relevant_docs = True
+                
+                if has_relevant_docs:
+                    context = "Contexte juridique pertinent:\n\n"
+                    sources = []  # Réinitialiser les sources pour ne garder que les pertinentes
+                    
+                    for i, doc in enumerate(relevant_docs, 1):
+                        # Limiter la taille des extraits pour éviter de dépasser le contexte
+                        excerpt = doc['content']
+                        if len(excerpt) > 800:  # Limiter à 800 caractères par extrait
+                            excerpt = excerpt[:800] + "..."
+    
+                        # Inclure la source et le numéro de page si disponible
+                        source_info = doc['source']
+                        page = doc.get('page')
+                        if page:
+                            source_info += f" (page {page})"
+    
+                        # Ajouter l'extrait au contexte
+                        context += f"Document {i}: {excerpt}\nSource: {source_info}\n\n"
+    
+                        # Collecter les sources pour la réponse
+                        if source_info not in sources:
+                            sources.append(source_info)
+    
+                        # Ajouter à la liste des extraits pour l'API
+                        excerpts.append({
+                            "content": excerpt,
+                            "source": doc['source'],
+                            "page": doc.get('page')
+                        })
+                else:
+                    # Aucun document pertinent malgré la recherche
+                    logger.info("🔍 Documents trouvés mais pas assez pertinents pour la requête")
+                    context = ""
+                    sources = []
+                    excerpts = []
             else:
                 context = ""
+                sources = []
                 excerpts = []
 
             # Génération de la réponse avec le contexte enrichi
@@ -277,15 +312,13 @@ class ChatService:
             
             # Mise à jour de l'historique de conversation
             conversation_history.append({"role": "user", "message": request.query})
-            conversation_history.append({"role": "assistant", "message": answer})
-
-            # Limitation de la taille de l'historique
+            conversation_history.append({"role": "assistant", "message": answer})            # Limitation de la taille de l'historique
             if len(conversation_history) > self.max_history_messages * 2:
                 conversation_history = conversation_history[-self.max_history_messages * 2:]
-
+                
             # Mise en cache de la conversation
             self.conversations.put(conversation_id, conversation_history)
-
+            
             # 💾 Enregistrer en base de données
             db: Session = SessionLocal()
             try:
@@ -293,8 +326,9 @@ class ChatService:
                 db_conversation = db.query(Conversation).filter_by(uuid=conversation_id).first()
                 if not db_conversation:
                     logger.error(f"Conversation non trouvée pour conversation_id={conversation_id}")
-
-                    raise HTTPException(status_code=404, detail="Conversation non trouvée.")                # Ajouter la question
+                    raise HTTPException(status_code=404, detail="Conversation non trouvée.")
+                
+                # Ajouter la question
                 db_question = Question(question_text=request.query, conversation_id=db_conversation.id)
                 db.add(db_question)
                 db.commit()
@@ -312,13 +346,23 @@ class ChatService:
                 db.commit()
             finally:
                 db.close()
-
-            return ChatResponse(
-                answer=answer,
-                sources=sources,
-                conversation_id=conversation_id,
-                excerpts=excerpts
-            )
+            
+            # Ne retourner les sources et extraits que s'ils sont pertinents
+            if has_relevant_docs:
+                return ChatResponse(
+                    answer=answer,
+                    sources=sources,
+                    conversation_id=conversation_id,
+                    excerpts=excerpts
+                )
+            else:
+                # Ne pas inclure de sources ou extraits si aucun document pertinent n'a été trouvé
+                return ChatResponse(
+                    answer=answer,
+                    sources=[],  # Pas de sources à afficher
+                    conversation_id=conversation_id,
+                    excerpts=[]   # Pas d'extraits à afficher
+                )
 
         except Exception as e:
             logger.error(f"Erreur lors du traitement de la requête: {str(e)}", exc_info=True)
@@ -374,33 +418,36 @@ class ChatService:
                     "role": msg["role"], 
                     "content": msg.get("message", msg.get("content", ""))
                 })
-            
-            # Construction du système prompt optimisé pour le contexte juridique des Junior-Entreprises
+              # Construction du système prompt optimisé pour le contexte juridique des Junior-Entreprises
             system_prompt = """Tu es un assistant juridique spécialisé pour les Junior-Entreprises en France.
 Tu fais preuve de précision, de clarté et de pédagogie dans tes réponses.
 
 DIRECTIVES IMPORTANTES:
-1. Utilise UNIQUEMENT les informations fournies dans le contexte pour élaborer ta réponse
+1. Si un contexte juridique est fourni, utilise UNIQUEMENT ces informations pour élaborer ta réponse
 2. Si le contexte ne contient pas suffisamment d'informations pour répondre à la question, indique-le clairement
-3. Cite précisément tes sources (document, page, article, texte de loi, etc.)
+3. Cite précisément tes sources (document, page, article, texte de loi, etc.) UNIQUEMENT quand tu utilises le contexte fourni
 4. N'invente JAMAIS de références juridiques ou de règlements qui ne seraient pas mentionnés explicitement dans le contexte
 5. Présente les informations de façon structurée avec des paragraphes courts et des puces lorsque c'est pertinent
 6. Exprime-toi dans un français clair, précis et accessible, en évitant le jargon juridique complexe
 7. Lorsque tu cites des extraits du contexte, indique clairement qu'il s'agit de citations
+8. Si AUCUN contexte n'est fourni, réponds de manière générale sans inventer de références juridiques spécifiques
 
-Tu dois être une aide précieuse pour les responsables de Junior-Entreprises qui ont besoin d'informations juridiques fiables."""
-
-            # Intégration optimisée du contexte RAG dans le prompt utilisateur
+Tu dois être une aide précieuse pour les responsables de Junior-Entreprises qui ont besoin d'informations juridiques fiables."""            # Intégration optimisée du contexte RAG dans le prompt utilisateur
             if context:
                 user_prompt = f"""En te basant UNIQUEMENT sur les informations juridiques suivantes:
 
 {context}
 
 Réponds à ma question de manière structurée et précise. N'hésite pas à citer des extraits pertinents du contexte pour appuyer ton propos.
+Si les informations fournies ne sont pas suffisamment pertinentes pour répondre à ma question, indique-le clairement.
 
 Ma question: {query}"""
             else:
-                user_prompt = f"Ma question est: {query}\n\nRéponds de la façon la plus précise possible en fonction des informations dont tu disposes, et indique clairement si tu manques d'informations juridiques spécifiques pour répondre."
+                user_prompt = f"""Ma question est: {query}
+
+Je comprends que tu n'as pas de contexte juridique spécifique pour répondre à cette question. 
+Réponds de la façon la plus précise possible en fonction des connaissances générales dont tu disposes, sans citer de sources spécifiques.
+Si cette question nécessite des informations juridiques spécialisées que tu ne possèdes pas, indique-le clairement."""
             
             # Appel à l'API Mistral avec le prompt structuré
             chat_response = self.client.chat(
