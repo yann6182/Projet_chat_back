@@ -54,11 +54,12 @@ async def create_new_conversation(
 async def process_query(
     request: ChatRequest,
     conversation_id: Optional[str] = None,  # Ajout de l'ID de la conversation
-    current_user: User = Depends(get_current_user)  # Authentification obligatoire
+    current_user: User = Depends(get_current_user),  # Authentification obligatoire
+    db: Session = Depends(get_db)
 ):
     """
     Traite une requête utilisateur et génère une réponse juridique.
-    Un nouveau conversation_id est généré automatiquement.
+    Si aucun conversation_id n'est fourni, une nouvelle conversation est automatiquement créée.
     L'utilisateur doit être connecté pour utiliser cette fonctionnalité.
     
     La requête peut inclure des documents contextuels (context_documents) fournis par le front-end
@@ -66,10 +67,34 @@ async def process_query(
     dans la base de connaissances vectorielle.
     """
     try:
+        # Si aucun ID de conversation n'est fourni, créer automatiquement une nouvelle conversation
+        if conversation_id is None:
+            # Générer un nouvel ID de conversation unique
+            conversation_id = str(uuid.uuid4())
+            
+            # Déterminer la catégorie et générer le titre automatiquement
+            category = chat_service._determine_category(request.query)
+            title = chat_service._generate_title(request.query)
+
+            # Enregistrer la conversation en base de données
+            db_conversation = Conversation(
+                uuid=conversation_id,
+                user_id=current_user.id,
+                category=category,
+                title=title  # Titre généré automatiquement
+            )
+            db.add(db_conversation)
+            db.commit()
+            db.refresh(db_conversation)
+            
+            logging.info(f"Nouvelle conversation créée automatiquement: {conversation_id}")
+
         # L'utilisateur est toujours connecté ici
-        response = await chat_service.process_query(request, user_id=current_user.id,conversation_id=conversation_id)
+        response = await chat_service.process_query(request, user_id=current_user.id, conversation_id=conversation_id)
         return response
     except Exception as e:
+        if conversation_id is None:
+            db.rollback()  # Annuler la création de conversation en cas d'échec
         raise HTTPException(status_code=500, detail=str(e))
 
 
