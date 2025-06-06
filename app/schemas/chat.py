@@ -23,12 +23,19 @@ class ChatRequest(BaseModel):
     class Config:
         from_attributes = True
 
+class DocumentInfo(BaseModel):
+    """Information sur un document généré automatiquement."""
+    filename: str
+    url: str
+    format: str  # "pdf" ou "docx"
+    
 class ChatResponse(BaseModel):
     answer: str
     sources: List[str] = []
     conversation_id: str  # uuid de la conversation
     context: Optional[Dict[str, str]] = None
     excerpts: Optional[List[Excerpt]] = None
+    generated_document: Optional[DocumentInfo] = None  # Informations sur le document généré automatiquement
 
     class Config:
         from_attributes = True

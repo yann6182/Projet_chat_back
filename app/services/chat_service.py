@@ -8,6 +8,7 @@ from app.schemas.chat import ChatRequest, ChatResponse, Excerpt
 from app.services.retrieval_service import RetrievalService
 from app.services.embedding_service import EmbeddingService
 from app.services.chroma_service import ChromaService  # Import du nouveau service ChromaDB
+from app.services.document_generator_service import DocumentGeneratorService  # Import du service de génération de documents
 from app.models.model import Conversation, Question, Response, User
 from app.db.database import SessionLocal
 from mistralai.client import MistralClient
@@ -66,6 +67,15 @@ class ChatService:
             self.embedding_service = None
             self.chroma_service = None
             self.use_chroma = False
+            
+        # Initialiser le service de génération de documents
+        try:
+            self.document_generator = DocumentGeneratorService()
+            logger.info("✅ Service de génération de documents initialisé avec succès")
+        except Exception as e:
+            logger.error(f"❌ Erreur lors de l'initialisation du service de génération de documents: {str(e)}")
+            logger.warning("⚠️ Le service de génération de documents sera désactivé")
+            self.document_generator = None
             
         self.conversations = LRUCache(max_conversations)
         self.timestamps = {}
@@ -345,8 +355,7 @@ class ChatService:
                 )
                 db.add(db_response)
                 db.commit()
-                
-                # Vérifier si c'est le premier échange (1 question + 1 réponse)
+                  # Vérifier si c'est le premier échange (1 question + 1 réponse)
                 # et mettre à jour le titre et la catégorie intelligemment
                 question_count = db.query(Question).filter(
                     Question.conversation_id == db_conversation.id
@@ -357,6 +366,81 @@ class ChatService:
                     await self.update_conversation_metadata(conversation_id, db)
             finally:
                 db.close()
+                
+            # Détecter si l'utilisateur demande explicitement un document
+            doc_detection = self._detect_document_request(request.query)
+            generated_document = None
+            
+            # Si c'est une demande de document et que le service de génération est disponible
+            if doc_detection["is_doc_request"] and hasattr(self, 'document_generator') and self.document_generator:
+                try:
+                    # Ouvrir une nouvelle session DB pour récupérer les informations de la conversation
+                    doc_db = SessionLocal()
+                    try:
+                        db_conversation = doc_db.query(Conversation).filter_by(uuid=conversation_id).first()
+                        if db_conversation:
+                            # Déterminer le format (PDF par défaut si non spécifié)
+                            doc_format = doc_detection["format"] or "pdf"
+                            
+                            # Générer le titre du document
+                            doc_title = f"Réponse à: {request.query[:50]}" if len(request.query) > 50 else f"Réponse à: {request.query}"
+                            
+                            # Préparer le contenu du document
+                            doc_content = f"Question: {request.query}\n\nRéponse: {answer}"
+                            
+                            # Générer les métadonnées
+                            metadata = {
+                                "Date de génération": datetime.now().strftime("%d/%m/%Y %H:%M"),
+                                "ID de conversation": conversation_id,
+                                "Type": "Réponse automatique"
+                            }
+                            
+                            # Générer le document selon le format demandé
+                            if doc_format.lower() == "pdf":
+                                file_path = self.document_generator.generate_pdf(
+                                    title=doc_title, 
+                                    content=doc_content, 
+                                    metadata=metadata,
+                                    sources=sources if sources and has_relevant_docs else None
+                                )
+                            else:  # docx
+                                file_path = self.document_generator.generate_word(
+                                    title=doc_title, 
+                                    content=doc_content, 
+                                    metadata=metadata,
+                                    sources=sources if sources and has_relevant_docs else None
+                                )
+                            
+                            # Récupérer le nom du fichier
+                            filename = os.path.basename(file_path)
+                            
+                            # Créer l'info du document généré
+                            generated_document = {
+                                "filename": filename,
+                                "url": f"/api/document-generator/download/{filename}",
+                                "format": doc_format
+                            }
+                            
+                            # Ajouter une note à la réponse concernant le document
+                            answer += f"\n\nJ'ai également généré un document {doc_format.upper()} avec cette réponse que vous pouvez télécharger."
+                            
+                            logger.info(f"Document {doc_format} généré automatiquement: {filename}")
+                    finally:
+                        doc_db.close()
+                        
+                except Exception as e:
+                    logger.error(f"Erreur lors de la génération automatique du document: {str(e)}")
+                    answer += "\n\nDésolé, je n'ai pas pu générer le document demandé suite à une erreur technique."
+            
+            # Préparer la réponse avec ou sans document généré
+            from app.schemas.chat import DocumentInfo
+            doc_info = None
+            if generated_document:
+                doc_info = DocumentInfo(
+                    filename=generated_document["filename"],
+                    url=generated_document["url"],
+                    format=generated_document["format"]
+                )
             
             # Ne retourner les sources et extraits que s'ils sont pertinents
             if has_relevant_docs:
@@ -364,7 +448,8 @@ class ChatService:
                     answer=answer,
                     sources=sources,
                     conversation_id=conversation_id,
-                    excerpts=excerpts
+                    excerpts=excerpts,
+                    generated_document=doc_info
                 )
             else:
                 # Ne pas inclure de sources ou extraits si aucun document pertinent n'a été trouvé
@@ -372,7 +457,8 @@ class ChatService:
                     answer=answer,
                     sources=[],  # Pas de sources à afficher
                     conversation_id=conversation_id,
-                    excerpts=[]   # Pas d'extraits à afficher
+                    excerpts=[],  # Pas d'extraits à afficher
+                    generated_document=doc_info
                 )
 
         except Exception as e:
@@ -723,3 +809,115 @@ Réponds exactement au format JSON suivant:
         except Exception as e:
             logger.error(f"Erreur lors de la mise à jour des métadonnées: {str(e)}")
             return False
+    def _detect_document_request(self, query: str) -> dict:
+        """
+        Détecte si la requête de l'utilisateur concerne la génération d'un document.
+        
+        Args:
+            query: La requête de l'utilisateur
+            
+        Returns:
+            Un dictionnaire avec les informations sur la détection :
+                - is_doc_request: True si la requête concerne un document
+                - format: 'pdf' ou 'docx' si spécifié, None sinon
+        """
+        # Normaliser la requête pour la recherche
+        query_lower = query.lower().strip()
+        
+        # Mots clés pour détecter une demande de document (plus complets et variés)
+        doc_keywords = [
+            # Demandes directes
+            "générer un document", "generer un document", "génère un document", "genere un document",
+            "crée un document", "cree un document", "créer un document", "creer un document",
+            "faire un document", "produire un document", "exporter en", "exporte en",
+            "générer un pdf", "generer un pdf", "génère un pdf", "genere un pdf",
+            "générer un word", "generer un word", "génère un word", "genere un word",
+            
+            # Formats spécifiques
+            "en format", "au format", "en pdf", "en word", "document pdf", "document word",
+            "fichier pdf", "fichier word", "rapport pdf", "rapport word",
+            
+            # Tournures variées
+            "sous forme de document", "sous forme de pdf", "sous forme de word",
+            "sous forme d'un document", "sous forme d'un pdf", "sous forme d'un word",
+            "me donner un document", "me fournir un document", "me donner un pdf", "me fournir un pdf",
+            "me donner un word", "me fournir un word", "m'envoyer un document", "m'envoyer un pdf",
+            "télécharger un document", "telecharger un document", "télécharger un pdf", "telecharger un pdf",
+            
+            # Expressions plus complexes
+            "je voudrais un document", "j'aimerais un document", "je souhaiterais un document", 
+            "je voudrais un pdf", "j'aimerais un pdf", "je souhaiterais un pdf",
+            "peux-tu me faire un document", "peux-tu me faire un pdf", "peux-tu me faire un word",
+            "peux-tu générer un document", "peux-tu generer un document",
+            "pourrais-tu me faire un document", "pourrais-tu générer un document",
+            
+            # Demandes spécifiques
+            "version pdf", "version word", "convertir en pdf", "convertir en word",
+            "réponse en pdf", "reponse en pdf", "réponse en document", "reponse en document"
+        ]
+        
+        # Expressions plus longues et complètes
+        doc_phrases = [
+            "je veux ta réponse en pdf",
+            "je veux ta réponse en word",
+            "je veux cette réponse en pdf",
+            "je veux cette réponse en word",
+            "peut-on avoir cette réponse sous forme de document",
+            "peut-on avoir cette réponse sous forme de pdf",
+            "peut-on avoir cette réponse sous forme de word",
+            "génère-moi un document avec cette réponse",
+            "génère-moi un pdf avec cette réponse",
+            "génère-moi un word avec cette réponse",
+            "transforme ta réponse en document",
+            "transforme ta réponse en pdf",
+            "transforme ta réponse en word",
+            "donne-moi ta réponse dans un document",
+            "donne-moi ta réponse dans un pdf",
+            "donne-moi ta réponse dans un word"
+        ]
+        
+        # Vérifier si la requête contient un mot clé de document ou une phrase complète
+        is_doc_request = any(keyword in query_lower for keyword in doc_keywords) or \
+                        any(phrase in query_lower for phrase in doc_phrases)
+        
+        # Vérifier les expressions de début ou fin de phrase
+        doc_starts = [
+            "document", "pdf", "word", "docx", 
+            "faire un", "générer un", "generer un", "créer un", "creer un"
+        ]
+        
+        if not is_doc_request:
+            # Vérifier si la requête commence ou se termine par certains mots clés
+            is_doc_request = query_lower.startswith(tuple(doc_starts)) or \
+                            query_lower.endswith(("en pdf", "en word", "en document", "en docx", "en doc"))
+        
+        # Analyse avancée: rechercher des structures de phrases typiques
+        if not is_doc_request:
+            import re
+            # Patterns comme "... en format pdf", "... sous forme de document", etc.
+            doc_patterns = [
+                r"en\s+(?:format|forme(?:\s+de)?)(?:\s+de)?\s+(?:document|pdf|word|docx|doc)",
+                r"sous\s+(?:format|forme)(?:\s+d[e'](?:un)?)?\s+(?:document|pdf|word|docx|doc)",
+                r"(?:générer|generer|créer|creer|produire|faire)(?:\s+un)?\s+(?:document|pdf|word|docx|doc)"
+            ]
+            
+            is_doc_request = any(re.search(pattern, query_lower) for pattern in doc_patterns)
+        
+        # Déterminer le format demandé
+        format_type = None
+        
+        # Priorité aux formats explicitement mentionnés
+        if "pdf" in query_lower:
+            format_type = "pdf"
+        elif any(word in query_lower for word in ["word", "docx", "doc"]):
+            format_type = "docx"
+            
+        # Si aucun format spécifique n'est mentionné mais c'est une demande de document,
+        # utiliser PDF comme format par défaut
+        if is_doc_request and not format_type:
+            format_type = "pdf"  # Format par défaut
+        
+        return {
+            "is_doc_request": is_doc_request,
+            "format": format_type
+        }
