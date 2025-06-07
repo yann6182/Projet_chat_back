@@ -3,7 +3,6 @@ from fastapi import APIRouter, UploadFile, File, HTTPException, Form
 from typing import List
 from app.schemas.document import DocumentAnalysisRequest, DocumentAnalysisResponse, DocumentUploadResponse
 from app.services.document_service import DocumentService
-from app.services.document_service import process_document
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 document_service = DocumentService()
@@ -31,8 +30,15 @@ async def analyze_document(request: DocumentAnalysisRequest):
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-@router.post("/upload/")
-async def upload_document(file: UploadFile = File(...)):
-    content = await file.read()
-    result = process_document(content, file.filename)
-    return {"message": "Analyse terminée", "result": result}
+
+@router.post("/process")
+async def process_document_endpoint(file: UploadFile = File(...)):
+    """
+    Traite un document téléchargé et retourne les résultats de l'analyse.
+    """
+    try:
+        content = await file.read()
+        result = document_service.process_document(content, file.filename)
+        return {"message": "Analyse terminée", "result": result}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

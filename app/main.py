@@ -3,7 +3,7 @@ import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.db.database import engine, Base
-from app.api.endpoints import users, chat, documents, knowledge_base, auth, file_chat, admin, document_generator
+from app.api.endpoints import users, chat, documents, knowledge_base, auth, file_chat, admin, document_generator, file_analysis
 
 Base.metadata.create_all(bind=engine)
 app = FastAPI(
@@ -44,3 +44,4 @@ app.include_router(auth.router, prefix="/api")
 app.include_router(file_chat.router, prefix="/api")
 app.include_router(admin.router, prefix="/api/admin", tags=["admin"])
 app.include_router(document_generator.router, prefix="/api")
+app.include_router(file_analysis.router, prefix="/api")
