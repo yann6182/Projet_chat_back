@@ -152,11 +152,11 @@ Ce point de terminaison permet de télécharger soit le document original, soit 
 
 ## 5. Interrogation de Documents (Optionnel)
 
-Le système permet de poser des questions sur le contenu d'un document téléversé.
+Le système permet de poser des questions sur le contenu d'un document téléversé. À chaque requête, une nouvelle conversation est créée automatiquement.
 
 -   **Endpoint**: `POST /api/file-analysis/query`
 -   **Type de contenu (Request)**: `application/json`
--   **Corps de la requête**: `DocumentQueryRequest`
+-   **Corps de la requête**: 
     ```json
     {
       "document_id": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
@@ -166,11 +166,13 @@ Le système permet de poser des questions sur le contenu d'un document téléver
 -   **Réponse (Success - 200 OK)**: `ChatResponse` (défini dans `app.schemas.chat`)
     ```json
     {
-      "conversation_id": "some_conversation_id_if_tracking_is_needed",
-      "response": "Les clauses principales de ce contrat semblent être...",
+      "answer": "Les clauses principales de ce contrat semblent être...",
       "sources": [ // Optionnel, si des sources spécifiques du document sont identifiées
-        // ...
-      ]
+        "source1", "source2", ...
+      ],
+      "conversation_id": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx", // Nouvelle conversation générée automatiquement
+      "context": {}, // Informations de contexte additionnelles
+      "excerpts": [] // Extraits du document utilisés pour répondre
     }
     ```
 -   **Utilisation**:
@@ -259,27 +261,25 @@ interface DocumentCorrectionResponse {
 }
 ```
 
-### `DocumentQueryRequest`
-```typescript
-interface DocumentQueryRequest {
-  document_id: string;
-  query: string;
-}
-```
-
 ### `ChatResponse` (pour l'interrogation)
 ```typescript
-interface ChatSource {
-  // Structure des sources si applicable, par exemple:
-  // page_number?: number;
-  // excerpt?: string;
-  [key: string]: any; 
+interface Excerpt {
+  content: string;
+  source: string;
+  page?: number;
 }
 
 interface ChatResponse {
+  answer: string;
+  sources: string[];
   conversation_id: string;
-  response: string;
-  sources?: ChatSource[];
+  context?: { [key: string]: string };
+  excerpts?: Excerpt[];
+  generated_document?: {
+    filename: string;
+    url: string;
+    format: string;
+  };
 }
 ```
 

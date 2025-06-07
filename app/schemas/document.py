@@ -49,3 +49,6 @@ class DocumentResponse(BaseModel):
     filepath: str
     size: int
     description: Optional[str] = None
+
+class DocumentCorrectionRequest(BaseModel):
+    document_id: str

@@ -1,17 +1,19 @@
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Form, File, UploadFile
 from typing import List, Optional
 import uuid 
 import logging
 from sqlalchemy.orm import Session
-from app.schemas.chat import ChatRequest, ChatResponse
+from app.schemas.chat import ChatRequest, ChatResponse, DocumentContext
 from app.schemas.schema import ConversationSchema, ConversationWithHistory
 from app.models.model import Conversation, User, Question, Response
 from app.db.database import get_db,SessionLocal
 from app.services.chat_service import ChatService
+from app.services.document_service import DocumentService
 from app.api.endpoints.auth import get_current_user, get_optional_user  # Importer les fonctions d'authentification
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 chat_service = ChatService()
+document_service = DocumentService()
 
 
 @router.post("/new-conversation", response_model=ChatResponse)
@@ -361,3 +363,71 @@ async def delete_conversation(
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Erreur lors de la suppression de la conversation: {str(e)}")
+
+@router.post("/query-with-file", response_model=ChatResponse)
+async def query_with_file(
+    query: str = Form(...),
+    conversation_id: Optional[str] = Form(None),
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Permet de poser une question en téléversant directement un fichier comme contexte.
+    Le fichier est d'abord téléversé puis son contenu est utilisé comme contexte pour la question.
+    Une nouvelle conversation est créée si aucun conversation_id n'est fourni.
+    """
+    try:
+        # 1. Téléverser le fichier avec le service document
+        document_id = await document_service.save_document(file.file, file.filename)
+        
+        # 2. Récupérer le contenu textuel du document
+        file_path, filename = document_service.find_document_by_id(document_id)
+        document_text = document_service.extract_text(file_path)
+        
+        # 3. Créer un contexte document à partir du texte extrait
+        context_document = DocumentContext(
+            content=document_text,
+            source=filename,
+            page=None
+        )
+        
+        # 4. Créer la requête de chat avec le contexte document
+        chat_request = ChatRequest(
+            query=query,
+            context_documents=[context_document]
+        )
+        
+        # 5. Générer une nouvelle conversation si nécessaire
+        if not conversation_id:
+            category = chat_service._determine_category(query)
+            title = chat_service._generate_title(query)
+            
+            # Créer une nouvelle conversation en base de données
+            conversation_id = str(uuid.uuid4())
+            db_conversation = Conversation(
+                uuid=conversation_id,
+                user_id=current_user.id,
+                category=category,
+                title=title
+            )
+            db.add(db_conversation)
+            db.commit()
+            db.refresh(db_conversation)
+            
+            logging.info(f"Nouvelle conversation créée avec contexte document: {conversation_id}")
+        
+        # 6. Traiter la requête avec le service chat
+        response = await chat_service.process_query(
+            request=chat_request, 
+            conversation_id=conversation_id, 
+            user_id=current_user.id
+        )
+        
+        return response
+        
+    except Exception as e:
+        db.rollback()  # Annuler les transactions en cas d'erreur
+        logger = logging.getLogger(__name__)
+        logger.error(f"Erreur lors du traitement de la requête avec fichier: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))

@@ -82,23 +82,24 @@ const DocumentAnalyzer = ({ token }) => {
       setLoading(false);
     }
   };
-  
   const handleAskQuestion = async () => {
     if (!documentId || !question.trim()) return;
     
     setLoading(true);
     
     try {
-      const formData = new FormData();
-      formData.append('document_id', documentId);
-      formData.append('query', question);
-      
+      // Envoyer les données au format JSON pour correspondre au nouveau format de l'endpoint
       const response = await fetch('/api/file-analysis/query', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
         },
-        body: formData,
+        body: JSON.stringify({ 
+          document_id: documentId,
+          query: question,
+          // Pas besoin de conversation_id car le backend en génère un nouveau à chaque fois
+        }),
       });
       
       const data = await response.json();
@@ -115,22 +116,19 @@ const DocumentAnalyzer = ({ token }) => {
       setLoading(false);
     }
   };
-  
-  const handleCorrectDocument = async () => {
+    const handleCorrectDocument = async () => {
     if (!documentId) return;
     
     setLoading(true);
     
     try {
-      const formData = new FormData();
-      formData.append('document_id', documentId);
-      
       const response = await fetch('/api/file-analysis/correct', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
         },
-        body: formData,
+        body: JSON.stringify({ document_id: documentId }),
       });
       
       const data = await response.json();
@@ -324,12 +322,32 @@ const DocumentAnalyzer = ({ token }) => {
                   {answer.answer}
                 </div>
                 
+                {answer.conversation_id && (
+                  <div className="conversation-info">
+                    <p>Conversation ID: {answer.conversation_id}</p>
+                  </div>
+                )}
+                
                 {answer.sources && answer.sources.length > 0 && (
                   <div className="sources">
                     <h4>Sources</h4>
                     <ul>
                       {answer.sources.map((source, index) => (
                         <li key={`source-${index}`}>{source}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                
+                {answer.excerpts && answer.excerpts.length > 0 && (
+                  <div className="excerpts">
+                    <h4>Extraits pertinents</h4>
+                    <ul>
+                      {answer.excerpts.map((excerpt, index) => (
+                        <li key={`excerpt-${index}`}>
+                          <p className="excerpt-content">{excerpt.content}</p>
+                          <p className="excerpt-source">Source: {excerpt.source} {excerpt.page ? `(page ${excerpt.page})` : ''}</p>
+                        </li>
                       ))}
                     </ul>
                   </div>

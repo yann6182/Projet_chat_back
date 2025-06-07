@@ -495,11 +495,10 @@ class DocumentService:
             4. Les obligations fiscales et sociales non respectées
             5. Citez les sources juridiques pertinentes de votre base de connaissances
             """
-            
-            # Utiliser le service de chat pour analyser avec la base de connaissances
+              # Utiliser le service de chat pour analyser avec la base de connaissances
             from app.schemas.chat import ChatRequest
             
-            chat_request = ChatRequest(message=legal_query)
+            chat_request = ChatRequest(query=legal_query)
             
             # Créer une conversation temporaire pour l'analyse
             temp_conversation_id = f"legal_analysis_{uuid.uuid4()}"

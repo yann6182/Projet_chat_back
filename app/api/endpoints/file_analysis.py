@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from app.db.database import get_db
 from app.services.document_service import DocumentService
 from app.services.chat_service import ChatService
-from app.schemas.document import DocumentUploadResponse, DocumentAnalysisRequest, DocumentAnalysisResponse
+from app.schemas.document import DocumentUploadResponse, DocumentAnalysisRequest, DocumentAnalysisResponse, DocumentCorrectionRequest
 from app.schemas.chat import ChatRequest, ChatResponse, DocumentContext
 from app.models.model import User
 from app.api.deps import get_current_user
@@ -60,9 +60,9 @@ async def analyze_file(
 
 @router.post("/query", response_model=ChatResponse)
 async def query_document(
-    request: ChatRequest,
-    document_id: str = Form(...),
-    conversation_id: Optional[str] = Form(None),
+    document_id: str,
+    query: str,
+    conversation_id: Optional[str] = None,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -79,6 +79,9 @@ async def query_document(
         # Extraire le texte du document
         document_text = document_service.extract_text(file_path)
         
+        # Créer une nouvelle requête ChatRequest avec la query
+        request = ChatRequest(query=query)
+        
         # Créer un contexte de document pour le chat service
         context_document = DocumentContext(
             content=document_text,
@@ -91,9 +94,9 @@ async def query_document(
             request.context_documents = []
         request.context_documents.append(context_document)
         
-        # Générer une nouvelle conversation si aucune n'est spécifiée
-        if not conversation_id:
-            conversation_id = str(uuid.uuid4())
+        # Toujours générer une nouvelle conversation pour les questions sur document
+        # Ce comportement résout le problème des questions sans conversation
+        conversation_id = str(uuid.uuid4())
             
         # Traiter la requête avec le service de chat
         response = await chat_service.process_query(
@@ -110,38 +113,19 @@ async def query_document(
 
 @router.post("/correct")
 async def correct_document(
-    document_id: str = Form(...),
+    request: DocumentCorrectionRequest,
     current_user: User = Depends(get_current_user)
 ):
     """
     Analyse et corrige un document pour améliorer son orthographe, sa grammaire et sa conformité légale.
     """
     try:
-        # Analyser d'abord le document
-        analysis_result = await document_service.analyze_document(document_id)
+        # Extraire l'ID du document de la requête JSON
+        document_id = request.document_id
         
-        # Simuler la correction automatique
-        # Note: Ce code devrait être remplacé par une véritable implémentation de correction
-        corrected_id = f"{document_id}_corrected"
-        file_path, filename = document_service.find_document_by_id(document_id)
-        _, ext = os.path.splitext(filename)
-        
-        # Dans une implémentation réelle, on utiliserait la méthode auto_correct_document
-        # Pour l'instant, on crée juste une copie du fichier original
-        if file_path:
-            corrected_filename = f"{corrected_id}{ext}"
-            corrected_path = os.path.join(document_service.upload_dir, corrected_filename)
-            shutil.copy2(file_path, corrected_path)
-            
-            return {
-                "original_document_id": document_id,
-                "corrected_document_id": corrected_id,
-                "filename": corrected_filename,
-                "corrections_applied": len(analysis_result.spelling_errors) + len(analysis_result.grammar_errors),
-                "status": "corrected"
-            }
-        else:
-            raise HTTPException(status_code=404, detail=f"Document avec l'ID {document_id} non trouvé")
+        # Utiliser directement la méthode auto_correct_document qui fait déjà toute l'analyse et correction
+        correction_result = await document_service.auto_correct_document(document_id)
+        return correction_result
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
