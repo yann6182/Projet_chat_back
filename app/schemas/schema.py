@@ -57,6 +57,17 @@ class TokenData(BaseModel):
     email: Optional[str] = None
     user_id: Optional[int] = None
 
+# Schémas pour la réinitialisation de mot de passe
+class PasswordResetRequest(BaseModel):
+    email: EmailStr
+
+class PasswordResetVerify(BaseModel):
+    token: str
+
+class PasswordResetConfirm(BaseModel):
+    token: str
+    new_password: str = Field(..., min_length=6)
+
 # Nouveaux schémas pour les conversations
 class ConversationBase(BaseModel):
     title: Optional[str] = "Nouvelle conversation"

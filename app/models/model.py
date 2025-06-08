@@ -16,6 +16,19 @@ class User(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     
     conversations = relationship("Conversation", back_populates="user")
+    password_resets = relationship("PasswordReset", back_populates="user")
+
+class PasswordReset(Base):
+    __tablename__ = "password_resets"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"))
+    reset_token = Column(String, unique=True, index=True, nullable=False)
+    expires_at = Column(DateTime, nullable=False)
+    is_used = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    
+    user = relationship("User", back_populates="password_resets")
 
 class Conversation(Base):
     __tablename__ = "conversations"

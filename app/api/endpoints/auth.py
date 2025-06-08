@@ -16,13 +16,15 @@ from app.core.config import settings
 from app.db.database import get_db
 from app.models.model import User
 from fastapi.responses import JSONResponse
-from app.schemas.schema import Token, UserCreate, UserSchema
+from app.schemas.schema import Token, UserCreate, UserSchema, PasswordResetRequest, PasswordResetVerify, PasswordResetConfirm
+from app.services.password_reset_service import PasswordResetService
 
 # Configurer le logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("auth_api")
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+password_reset_service = PasswordResetService()
 
 def authenticate_user(db: Session, email: str, password: str):
     user = db.query(User).filter(User.email == email).first()
@@ -277,4 +279,67 @@ async def check_admin_status(
         "username": current_user.username,
         "email": current_user.email,
         "user_id": current_user.id
+    }
+
+@router.post("/forgot-password")
+async def forgot_password(
+    request: PasswordResetRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Demande de réinitialisation de mot de passe par email
+    """
+    logger.info(f"Demande de réinitialisation de mot de passe pour: {request.email}")
+    
+    # Créer une demande de réinitialisation et envoyer un email
+    success = password_reset_service.create_password_reset_request(db, request.email)
+    
+    # Pour des raisons de sécurité, toujours indiquer que la demande a réussi
+    # même si l'email n'existe pas (pour éviter l'énumération des emails)
+    return {
+        "message": "Si votre email existe dans notre base, vous recevrez un email avec les instructions pour réinitialiser votre mot de passe."
+    }
+
+@router.post("/verify-reset-token")
+async def verify_reset_token(
+    request: PasswordResetVerify,
+    db: Session = Depends(get_db)
+):
+    """
+    Vérifie si un token de réinitialisation est valide
+    """
+    logger.info(f"Vérification d'un token de réinitialisation")
+    
+    user = password_reset_service.verify_reset_token(db, request.token)
+    if not user:
+        raise HTTPException(
+            status_code=400,
+            detail="Le token de réinitialisation est invalide ou a expiré"
+        )
+    
+    return {
+        "valid": True,
+        "email": user.email,
+        "username": user.username
+    }
+
+@router.post("/reset-password")
+async def reset_password(
+    request: PasswordResetConfirm,
+    db: Session = Depends(get_db)
+):
+    """
+    Réinitialise le mot de passe avec un token valide
+    """
+    logger.info(f"Réinitialisation de mot de passe avec token")
+    
+    success = password_reset_service.reset_password(db, request.token, request.new_password)
+    if not success:
+        raise HTTPException(
+            status_code=400,
+            detail="Le token de réinitialisation est invalide ou a expiré"
+        )
+    
+    return {
+        "message": "Votre mot de passe a été réinitialisé avec succès"
     }
