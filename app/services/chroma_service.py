@@ -88,12 +88,11 @@ class ChromaService:
         except Exception as e:
             logger.error(f"❌ Erreur lors de l'initialisation de ChromaDB: {str(e)}")
             self.collection = None
-            
     def search(
         self,
         query: str,
         k: int = 3,
-        threshold: float = 0.35,  # Augmentation du seuil pour limiter les résultats non pertinents
+        threshold: float = 0.30,  # Seuil réduit pour être plus inclusif dans les résultats
         filter_criteria: Optional[Dict] = None
     ) -> List[Dict]:
         """

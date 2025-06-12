@@ -269,15 +269,29 @@ class ChatService:
                 is_simple_question = any(simple_q in request.query.lower() for simple_q in simple_questions) and len(request.query) < 20
                 
                 if not is_simple_question:
+                    # Un journal détaillé pour aider au debug
+                    print(f"🔍 Analyse de {len(all_relevant_documents)} documents potentiellement pertinents")
+                    
                     for doc in all_relevant_documents:
+                        # Afficher le score brut pour le debug
+                        doc_score = doc.get('score', 0)
+                        doc_source = doc.get('source', 'Source inconnue')
+                        
                         # Considérer les documents fournis comme toujours pertinents
-                        if 'score' in doc and doc['score'] > 0.7:  # Seuil encore plus élevé pour éviter les faux positifs
+                        if 'score' in doc and doc_score > 0.45:  # Seuil encore réduit pour inclure plus de documents pertinents
                             relevant_docs.append(doc)
                             has_relevant_docs = True
+                            print(f"✓ Document ajouté (score: {doc_score:.3f}): {doc_source}")
+                            logger.info(f"Document pertinent ajouté (score: {doc_score:.3f}): {doc_source}")
                         elif doc.get('source', '').startswith('Document fourni'):
                             # Les documents fournis par l'utilisateur sont toujours considérés comme pertinents
                             relevant_docs.append(doc)
                             has_relevant_docs = True
+                            print(f"✓ Document fourni par l'utilisateur ajouté: {doc_source}")
+                            logger.info(f"Document fourni par l'utilisateur ajouté: {doc_source}")
+                        else:
+                            print(f"✗ Document rejeté (score: {doc_score:.3f}): {doc_source}")
+                            logger.debug(f"Document non pertinent rejeté (score: {doc_score:.3f}): {doc_source}")
                 
                 if has_relevant_docs:
                     context = "Contexte juridique pertinent:\n\n"
@@ -514,28 +528,29 @@ class ChatService:
                 history_messages.append({
                     "role": msg["role"], 
                     "content": msg.get("message", msg.get("content", ""))
-                })
-              # Construction du système prompt optimisé pour le contexte juridique des Junior-Entreprises
+                })              # Construction du système prompt optimisé pour le contexte juridique des Junior-Entreprises
             system_prompt = """Tu es un assistant juridique spécialisé pour les Junior-Entreprises en France.
 Tu fais preuve de précision, de clarté et de pédagogie dans tes réponses.
 
 DIRECTIVES IMPORTANTES:
 1. Si un contexte juridique est fourni, utilise UNIQUEMENT ces informations pour élaborer ta réponse
 2. Si le contexte ne contient pas suffisamment d'informations pour répondre à la question, indique-le clairement
-3. Cite précisément tes sources (document, page, article, texte de loi, etc.) UNIQUEMENT quand tu utilises le contexte fourni
+3. CITE SYSTÉMATIQUEMENT et EXPLICITEMENT tes sources après CHAQUE information tirée du contexte
 4. N'invente JAMAIS de références juridiques ou de règlements qui ne seraient pas mentionnés explicitement dans le contexte
 5. Présente les informations de façon structurée avec des paragraphes courts et des puces lorsque c'est pertinent
 6. Exprime-toi dans un français clair, précis et accessible, en évitant le jargon juridique complexe
-7. Lorsque tu cites des extraits du contexte, indique clairement qu'il s'agit de citations
+7. Le format de citation OBLIGATOIRE est "[Source: Nom du document]" et doit apparaître APRÈS CHAQUE information issue du contexte
 8. Si AUCUN contexte n'est fourni, réponds de manière générale sans inventer de références juridiques spécifiques
+9. Même si une information paraît évidente, cite TOUJOURS sa source si elle provient du contexte
 
-Tu dois être une aide précieuse pour les responsables de Junior-Entreprises qui ont besoin d'informations juridiques fiables."""            # Intégration optimisée du contexte RAG dans le prompt utilisateur
+Tu dois être une aide précieuse pour les responsables de Junior-Entreprises qui ont besoin d'informations juridiques fiables, en citant systématiquement tes sources."""            # Intégration optimisée du contexte RAG dans le prompt utilisateur
             if context:
                 user_prompt = f"""En te basant UNIQUEMENT sur les informations juridiques suivantes:
 
 {context}
 
-Réponds à ma question de manière structurée et précise. N'hésite pas à citer des extraits pertinents du contexte pour appuyer ton propos.
+Réponds à ma question de manière structurée et précise. Tu DOIS citer explicitement la source pour CHAQUE information que tu utilises.
+Utilise le format "[Source: Nom du document]" après chaque information importante.
 Si les informations fournies ne sont pas suffisamment pertinentes pour répondre à ma question, indique-le clairement.
 
 Ma question: {query}"""
