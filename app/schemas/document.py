@@ -52,3 +52,12 @@ class DocumentResponse(BaseModel):
 
 class DocumentCorrectionRequest(BaseModel):
     document_id: str
+    
+class DocumentCorrectionResponse(BaseModel):
+    original_document_id: str
+    corrected_document_id: str
+    filename: str  # Nom du fichier corrigé pour téléchargement
+    corrections_applied: int
+    corrections_details: List[str]
+    legal_recommendations: List[str]
+    status: str = "corrected"

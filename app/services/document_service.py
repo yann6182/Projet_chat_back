@@ -1232,3 +1232,115 @@ class DocumentService:
                     all_validations[word] = True
         
         return all_validations
+        
+    async def auto_correct_document(self, document_id: str) -> 'DocumentCorrectionResponse':
+        """
+        Corrige automatiquement les erreurs d'orthographe et de grammaire dans un document.
+        
+        Args:
+            document_id: L'identifiant du document à corriger
+            
+        Returns:
+            Un objet DocumentCorrectionResponse contenant les détails de la correction
+        """
+        from app.schemas.document import DocumentCorrectionResponse
+        
+        # Trouver le fichier correspondant à l'ID
+        file_path, filename = self.find_document_by_id(document_id)
+        
+        if not file_path:
+            raise FileNotFoundError(f"Document avec l'ID {document_id} non trouvé")
+            
+        # Extraire le texte du document
+        text = self.extract_text(file_path)
+        
+        # Analyser le document pour identifier les erreurs
+        spelling_errors = await self.check_spelling(text)
+        grammar_errors = self.check_grammar(text)
+        legal_issues = await self.check_legal_compliance(text)
+        
+        # Préparer le texte corrigé
+        corrected_text = text
+        corrections_applied = 0
+        corrections_details = []
+        legal_recommendations = []
+        
+        # Correction des erreurs d'orthographe
+        for error in spelling_errors:
+            if error.suggestions:
+                # Remplacer le mot incorrect par la première suggestion
+                replacement = error.suggestions[0]
+                # Position du mot dans le texte
+                start_pos = error.position["start"]
+                end_pos = error.position["end"]
+                
+                # Remplacer le mot en conservant la mise en forme (majuscules, etc.)
+                original_word = corrected_text[start_pos:end_pos]
+                if original_word.isupper():
+                    replacement = replacement.upper()
+                elif original_word[0].isupper():
+                    replacement = replacement.capitalize()
+                
+                # Appliquer la correction
+                corrected_text = corrected_text[:start_pos] + replacement + corrected_text[end_pos:]
+                
+                # Ajuster les positions pour les corrections suivantes
+                length_difference = len(replacement) - (end_pos - start_pos)
+                for other_error in spelling_errors:
+                    if other_error.position["start"] > end_pos:
+                        other_error.position["start"] += length_difference
+                        other_error.position["end"] += length_difference
+                
+                corrections_applied += 1
+                corrections_details.append(f"Correction orthographique : '{original_word}' remplacé par '{replacement}'")
+        
+        # Correction des erreurs grammaticales
+        for error in grammar_errors:
+            if error.suggestions:
+                # Position de l'erreur dans le texte
+                start_pos = error.position["start"]
+                end_pos = error.position["end"]
+                
+                # Utiliser la première suggestion
+                replacement = error.suggestions[0]
+                original_text = corrected_text[start_pos:end_pos]
+                
+                # Appliquer la correction
+                corrected_text = corrected_text[:start_pos] + replacement + corrected_text[end_pos:]
+                
+                # Ajuster les positions pour les corrections suivantes
+                length_difference = len(replacement) - (end_pos - start_pos)
+                for other_error in grammar_errors:
+                    if other_error.position["start"] > end_pos:
+                        other_error.position["start"] += length_difference
+                        other_error.position["end"] += length_difference
+                
+                corrections_applied += 1
+                corrections_details.append(f"Correction grammaticale : '{original_text}' remplacé par '{replacement}'")
+        
+        # Collecter les recommandations juridiques (sans auto-correction)
+        for issue in legal_issues:
+            legal_recommendations.append(f"{issue.issue_type} - {issue.description}: {issue.recommendation}")
+        
+        # Générer un nouvel ID pour le document corrigé
+        corrected_document_id = str(uuid.uuid4())
+        
+        # Déterminer le type de fichier d'origine et l'extension du fichier corrigé
+        corrected_filename = f"{corrected_document_id}_corrected.txt"
+        corrected_file_path = os.path.join(self.upload_dir, corrected_filename)
+        
+        # Sauvegarder le document corrigé
+        os.makedirs(os.path.dirname(corrected_file_path), exist_ok=True)
+        with open(corrected_file_path, "w", encoding="utf-8") as f:
+            f.write(corrected_text)
+        
+        # Préparer et retourner la réponse
+        return DocumentCorrectionResponse(
+            original_document_id=document_id,
+            corrected_document_id=corrected_document_id,
+            filename=corrected_filename,
+            corrections_applied=corrections_applied,
+            corrections_details=corrections_details,
+            legal_recommendations=legal_recommendations,
+            status="corrected"
+        )
